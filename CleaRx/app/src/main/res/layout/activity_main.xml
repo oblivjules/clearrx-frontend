@@ -1,0 +1,540 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+        xmlns:android="http://schemas.android.com/apk/res/android"
+        xmlns:app="http://schemas.android.com/apk/res-auto"
+        xmlns:tools="http://schemas.android.com/tools"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/brand_primary">
+
+    <!-- LAYER 1: CAMERA CONTAINER -->
+    <FrameLayout
+            android:id="@+id/cameraContainer"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="visible">
+
+        <androidx.camera.view.PreviewView
+                android:id="@+id/previewView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                app:scaleType="fillCenter" />
+
+        <com.app.clearx.FramingOverlayView
+                android:id="@+id/framingOverlay"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+        <!-- Tap-to-focus ripple indicator -->
+        <View
+                android:id="@+id/focusRipple"
+                android:layout_width="60dp"
+                android:layout_height="60dp"
+                android:visibility="gone"
+                android:background="@drawable/focus_ripple"
+                android:elevation="8dp" />
+
+        <!-- Flashlight Toggle Button -->
+        <ImageButton
+                android:id="@+id/flashlightButton"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="top|end"
+                android:layout_marginTop="56dp"
+                android:layout_marginEnd="16dp"
+                android:background="@drawable/tooltip_bg"
+                android:backgroundTint="@color/brand_primary"
+                android:contentDescription="Toggle flashlight"
+                android:elevation="8dp"
+                android:padding="10dp"
+                android:src="@drawable/ic_flashlight"
+                android:tint="#FFFFFF"
+                android:alpha="0.55" />
+
+        <!-- Guidance Tooltip -->
+        <TextView
+                android:id="@+id/guidanceText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top|center_horizontal"
+                android:layout_marginTop="64dp"
+                android:background="@drawable/tooltip_bg"
+                android:fontFamily="sans-serif-medium"
+                android:paddingHorizontal="20dp"
+                android:paddingVertical="10dp"
+                android:text="Position prescription within frame"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:elevation="4dp" />
+
+        <!-- Capture Button Assembly -->
+        <FrameLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom|center_horizontal"
+                android:layout_marginBottom="40dp">
+
+            <View
+                    android:layout_width="84dp"
+                    android:layout_height="84dp"
+                    android:background="@drawable/ring_outer" />
+
+            <ImageButton
+                    android:id="@+id/captureButton"
+                    android:layout_width="68dp"
+                    android:layout_height="68dp"
+                    android:layout_gravity="center"
+                    android:background="@drawable/shutter_inner"
+                    android:contentDescription="Capture"
+                    android:elevation="4dp"
+                    android:src="@drawable/ic_camera_capture" />
+        </FrameLayout>
+    </FrameLayout>
+
+    <!-- LAYER 2: PROCESSING OVERLAY -->
+    <LinearLayout
+            android:id="@+id/processingOverlay"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#F2FFFFFF"
+            android:elevation="20dp"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+        <ProgressBar
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:indeterminateTint="@color/brand_primary" />
+
+        <TextView
+                android:id="@+id/processingStatusText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:fontFamily="sans-serif-medium"
+                android:text="Analyzing Document"
+                android:textColor="@color/brand_primary"
+                android:textSize="16sp"
+                android:letterSpacing="0.05" />
+
+        <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="Please keep the device steady"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp" />
+    </LinearLayout>
+
+    <!-- LAYER 2b: TROCR TERMINAL OVERLAY -->
+    <FrameLayout
+            android:id="@+id/terminalOverlay"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#E8FFFFFF"
+            android:elevation="22dp"
+            android:gravity="center"
+            android:visibility="gone">
+
+        <com.google.android.material.card.MaterialCardView
+                android:layout_width="300dp"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                app:cardBackgroundColor="#FFFFFF"
+                app:cardCornerRadius="8dp"
+                app:cardElevation="6dp"
+                app:strokeColor="#DDDDDD"
+                app:strokeWidth="1dp">
+
+            <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                <!-- Terminal header bar -->
+                <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="36dp"
+                        android:background="#CC0000"
+                        android:gravity="center_vertical"
+                        android:paddingStart="10dp"
+                        android:paddingEnd="10dp"
+                        android:orientation="horizontal">
+
+                    <!-- Window control dots -->
+                    <View
+                            android:layout_width="10dp"
+                            android:layout_height="10dp"
+                            android:background="@drawable/terminal_dot"
+                            android:backgroundTint="#EE3333" />
+
+                    <View
+                            android:layout_width="10dp"
+                            android:layout_height="10dp"
+                            android:layout_marginStart="6dp"
+                            android:background="@drawable/terminal_dot"
+                            android:backgroundTint="#EEEE00" />
+
+                    <View
+                            android:layout_width="10dp"
+                            android:layout_height="10dp"
+                            android:layout_marginStart="6dp"
+                            android:background="@drawable/terminal_dot"
+                            android:backgroundTint="#00BB00" />
+
+                    <!-- Header title centered in remaining space -->
+                    <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:gravity="center"
+                            android:text="Status"
+                            android:textColor="#FFFFFF"
+                            android:textSize="12sp"
+                            android:fontFamily="monospace" />
+
+                    <!-- Balance spacer matching the three dots + gaps (10+6+10+6+10 = 42dp... use 38dp) -->
+                    <Space
+                            android:layout_width="38dp"
+                            android:layout_height="match_parent" />
+                </LinearLayout>
+
+                <!-- Terminal body -->
+                <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingStart="16dp"
+                        android:paddingEnd="16dp"
+                        android:paddingTop="14dp"
+                        android:paddingBottom="14dp">
+
+                    <!-- Animated text row with blinking cursor -->
+                    <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical">
+
+                        <TextView
+                                android:id="@+id/terminalStatusText"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="monospace"
+                                android:textColor="#CC0000"
+                                android:textSize="13sp"
+                                android:text="" />
+
+                        <TextView
+                                android:id="@+id/terminalCursor"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="monospace"
+                                android:textColor="#CC0000"
+                                android:textSize="13sp"
+                                android:text="|" />
+                    </LinearLayout>
+
+                    <!-- Stage progress indicator -->
+                    <TextView
+                            android:id="@+id/terminalProgressText"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:fontFamily="monospace"
+                            android:textColor="#999999"
+                            android:textSize="11sp"
+                            android:text="[ initializing ]" />
+                </LinearLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+    </FrameLayout>
+
+    <!-- LAYER 3: RESULT SCREEN -->
+    <androidx.cardview.widget.CardView
+            android:id="@+id/resultScreen"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone"
+            app:cardBackgroundColor="@color/surface_background"
+            app:cardCornerRadius="0dp"
+            app:cardElevation="25dp">
+
+        <androidx.coordinatorlayout.widget.CoordinatorLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent">
+
+            <androidx.core.widget.NestedScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent">
+
+                <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingBottom="120dp">
+
+                    <!-- Red gradient header bar -->
+                    <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:background="@color/brand_primary"
+                            android:orientation="horizontal"
+                            android:paddingHorizontal="20dp"
+                            android:paddingVertical="18dp"
+                            android:gravity="center_vertical">
+
+                        <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                            <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="CleaRx"
+                                    android:textColor="#FFCDD2"
+                                    android:textSize="11sp"
+                                    android:letterSpacing="0.15"
+                                    android:textAllCaps="true" />
+
+                            <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Scan Results"
+                                    android:textColor="#FFFFFF"
+                                    android:textSize="22sp"
+                                    android:fontFamily="sans-serif-black" />
+                        </LinearLayout>
+
+                        <TextView
+                                android:id="@+id/qualityBadge"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:background="@drawable/badge_bg_success"
+                                android:paddingHorizontal="12dp"
+                                android:paddingVertical="5dp"
+                                android:text="OPTIMIZED"
+                                android:textColor="@color/status_success"
+                                android:textSize="11sp"
+                                android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <!-- Content padding -->
+                    <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:padding="20dp">
+
+                        <!-- Enhanced image card -->
+                        <androidx.cardview.widget.CardView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginBottom="12dp"
+                                app:cardCornerRadius="16dp"
+                                app:cardElevation="4dp"
+                                app:cardBackgroundColor="@color/surface_card">
+
+                            <ImageView
+                                    android:id="@+id/enhancedImageView"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="260dp"
+                                    android:scaleType="fitCenter"
+                                    android:background="#F1F5F9" />
+                        </androidx.cardview.widget.CardView>
+
+                        <!-- Original thumbnail + quality score -->
+                        <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginBottom="20dp"
+                                android:background="@color/surface_card"
+                                android:gravity="center_vertical"
+                                android:orientation="horizontal"
+                                android:padding="12dp">
+
+                            <!-- Wrap ShapeableImageView in CardView for elevation -->
+                            <androidx.cardview.widget.CardView
+                                    android:layout_width="60dp"
+                                    android:layout_height="60dp"
+                                    app:cardCornerRadius="10dp"
+                                    app:cardElevation="2dp">
+
+                                <com.google.android.material.imageview.ShapeableImageView
+                                        android:id="@+id/originalImageView"
+                                        android:layout_width="60dp"
+                                        android:layout_height="60dp"
+                                        android:scaleType="centerCrop"
+                                        app:shapeAppearanceOverlay="@style/RoundedSquare" />
+                            </androidx.cardview.widget.CardView>
+
+                            <LinearLayout
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginStart="14dp"
+                                    android:orientation="vertical">
+
+                                <TextView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:text="ORIGINAL CAPTURE"
+                                        android:textColor="@color/text_secondary"
+                                        android:textSize="10sp"
+                                        android:letterSpacing="0.1"
+                                        android:textAllCaps="true" />
+
+                                <TextView
+                                        android:id="@+id/qualityScoreText"
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:layout_marginTop="2dp"
+                                        android:fontFamily="sans-serif-medium"
+                                        android:text="Quality Score: —"
+                                        android:textColor="@color/text_main"
+                                        android:textSize="14sp" />
+                            </LinearLayout>
+                        </LinearLayout>
+
+                        <!-- Prescription Result Section -->
+                        <LinearLayout
+                                android:id="@+id/prescriptionCard"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:orientation="vertical"
+                                android:visibility="gone">
+
+                            <!-- Section header with red accent strip -->
+                            <LinearLayout
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginBottom="12dp"
+                                    android:gravity="center_vertical"
+                                    android:orientation="horizontal">
+
+                                <View
+                                        android:layout_width="4dp"
+                                        android:layout_height="20dp"
+                                        android:layout_marginEnd="10dp"
+                                        android:background="@color/brand_primary" />
+
+                                <TextView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:text="PRESCRIPTION DETAILS"
+                                        android:textColor="@color/text_main"
+                                        android:textSize="13sp"
+                                        android:fontFamily="sans-serif-black"
+                                        android:letterSpacing="0.08"
+                                        android:textAllCaps="true" />
+                            </LinearLayout>
+
+                            <!-- Medicines RecyclerView -->
+                            <androidx.recyclerview.widget.RecyclerView
+                                    android:id="@+id/medicinesRecyclerView"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:nestedScrollingEnabled="false" />
+
+                            <!-- Divider -->
+                            <View
+                                    android:layout_width="match_parent"
+                                    android:layout_height="1dp"
+                                    android:layout_marginTop="16dp"
+                                    android:layout_marginBottom="12dp"
+                                    android:background="#FFCDD2" />
+
+                            <!-- OCR section header -->
+                            <LinearLayout
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginBottom="8dp"
+                                    android:gravity="center_vertical"
+                                    android:orientation="horizontal">
+
+                                <View
+                                        android:layout_width="4dp"
+                                        android:layout_height="16dp"
+                                        android:layout_marginEnd="10dp"
+                                        android:background="@color/brand_primary_light" />
+
+                                <TextView
+                                        android:layout_width="0dp"
+                                        android:layout_height="wrap_content"
+                                        android:layout_weight="1"
+                                        android:text="RAW OCR TEXT"
+                                        android:textColor="@color/text_secondary"
+                                        android:textSize="10sp"
+                                        android:letterSpacing="0.1"
+                                        android:textAllCaps="true" />
+
+                                <TextView
+                                        android:id="@+id/rxConfidenceBadge"
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:background="@drawable/chip_bg_red"
+                                        android:paddingHorizontal="10dp"
+                                        android:paddingVertical="3dp"
+                                        android:text="Drug match: —"
+                                        android:textSize="10sp"
+                                        android:textColor="@color/chip_text"
+                                        android:fontFamily="sans-serif-medium" />
+                            </LinearLayout>
+
+                            <!-- Raw OCR text value -->
+                            <TextView
+                                    android:id="@+id/rxRawText"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="130dp"
+                                    android:text="—"
+                                    android:textColor="@color/text_main"
+                                    android:textSize="12sp"
+                                    android:background="@drawable/raw_text_bg"
+                                    android:padding="12dp"
+                                    android:fontFamily="monospace"
+                                    android:gravity="top|start"
+                                    android:scrollbars="vertical"
+                                    android:fadeScrollbars="false" />
+
+                        </LinearLayout>
+                        <!-- END Prescription Result Section -->
+
+                    </LinearLayout>
+                </LinearLayout>
+            </androidx.core.widget.NestedScrollView>
+
+            <!-- Bottom action bar -->
+            <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="bottom"
+                    android:background="@color/surface_card"
+                    android:elevation="16dp"
+                    android:orientation="horizontal"
+                    android:paddingHorizontal="16dp"
+                    android:paddingVertical="12dp">
+
+                <com.google.android.material.button.MaterialButton
+                        android:id="@+id/retakeButton"
+                        style="@style/Widget.App.Button.Outlined"
+                        android:layout_width="0dp"
+                        android:layout_height="52dp"
+                        android:layout_marginEnd="8dp"
+                        android:layout_weight="1"
+                        android:text="Retake" />
+
+                <com.google.android.material.button.MaterialButton
+                        android:id="@+id/saveButton"
+                        style="@style/Widget.App.Button.Primary"
+                        android:layout_width="0dp"
+                        android:layout_height="52dp"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1.5"
+                        android:text="Continue" />
+            </LinearLayout>
+
+        </androidx.coordinatorlayout.widget.CoordinatorLayout>
+    </androidx.cardview.widget.CardView>
+</androidx.constraintlayout.widget.ConstraintLayout>
