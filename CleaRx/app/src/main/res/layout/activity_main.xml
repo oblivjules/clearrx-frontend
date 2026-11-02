@@ -421,53 +421,14 @@
                                         android:background="@color/brand_primary" />
 
                                 <TextView
-                                        android:layout_width="wrap_content"
+                                        android:layout_width="0dp"
                                         android:layout_height="wrap_content"
+                                        android:layout_weight="1"
                                         android:text="PRESCRIPTION DETAILS"
                                         android:textColor="@color/text_main"
                                         android:textSize="13sp"
                                         android:fontFamily="sans-serif-black"
                                         android:letterSpacing="0.08"
-                                        android:textAllCaps="true" />
-                            </LinearLayout>
-
-                            <!-- Medicines RecyclerView -->
-                            <androidx.recyclerview.widget.RecyclerView
-                                    android:id="@+id/medicinesRecyclerView"
-                                    android:layout_width="match_parent"
-                                    android:layout_height="wrap_content"
-                                    android:nestedScrollingEnabled="false" />
-
-                            <!-- Divider -->
-                            <View
-                                    android:layout_width="match_parent"
-                                    android:layout_height="1dp"
-                                    android:layout_marginTop="16dp"
-                                    android:layout_marginBottom="12dp"
-                                    android:background="#FFCDD2" />
-
-                            <!-- OCR section header -->
-                            <LinearLayout
-                                    android:layout_width="match_parent"
-                                    android:layout_height="wrap_content"
-                                    android:layout_marginBottom="8dp"
-                                    android:gravity="center_vertical"
-                                    android:orientation="horizontal">
-
-                                <View
-                                        android:layout_width="4dp"
-                                        android:layout_height="16dp"
-                                        android:layout_marginEnd="10dp"
-                                        android:background="@color/brand_primary_light" />
-
-                                <TextView
-                                        android:layout_width="0dp"
-                                        android:layout_height="wrap_content"
-                                        android:layout_weight="1"
-                                        android:text="RAW OCR TEXT"
-                                        android:textColor="@color/text_secondary"
-                                        android:textSize="10sp"
-                                        android:letterSpacing="0.1"
                                         android:textAllCaps="true" />
 
                                 <TextView
@@ -483,20 +444,12 @@
                                         android:fontFamily="sans-serif-medium" />
                             </LinearLayout>
 
-                            <!-- Raw OCR text value -->
-                            <TextView
-                                    android:id="@+id/rxRawText"
+                            <!-- Medicines RecyclerView -->
+                            <androidx.recyclerview.widget.RecyclerView
+                                    android:id="@+id/medicinesRecyclerView"
                                     android:layout_width="match_parent"
-                                    android:layout_height="130dp"
-                                    android:text="—"
-                                    android:textColor="@color/text_main"
-                                    android:textSize="12sp"
-                                    android:background="@drawable/raw_text_bg"
-                                    android:padding="12dp"
-                                    android:fontFamily="monospace"
-                                    android:gravity="top|start"
-                                    android:scrollbars="vertical"
-                                    android:fadeScrollbars="false" />
+                                    android:layout_height="wrap_content"
+                                    android:nestedScrollingEnabled="false" />
 
                         </LinearLayout>
                         <!-- END Prescription Result Section -->

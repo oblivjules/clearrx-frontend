@@ -40,8 +40,11 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import android.graphics.Bitmap
 import android.graphics.BitmapRegionDecoder
+import android.graphics.Matrix
 import android.graphics.Rect
 import android.graphics.RectF
+import android.view.Surface
+import androidx.exifinterface.media.ExifInterface
 import java.io.File
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -76,7 +79,6 @@ class MainActivity : AppCompatActivity() {
     // Prescription result views
     private lateinit var prescriptionCard: LinearLayout
     private lateinit var medicinesRecyclerView: RecyclerView
-    private lateinit var rxRawText: TextView
     private lateinit var rxConfidenceBadge: TextView
     private lateinit var medicineAdapter: MedicineAdapter
 
@@ -85,6 +87,7 @@ class MainActivity : AppCompatActivity() {
     private var imageAnalysis: ImageAnalysis? = null
     private var cameraControl: CameraControl? = null
     private var cameraProvider: ProcessCameraProvider? = null
+    private var activeCameraSelector: CameraSelector? = null
     private lateinit var cameraExecutor: ExecutorService
 
     // Gatekeeper
@@ -104,6 +107,10 @@ class MainActivity : AppCompatActivity() {
     private var autoCaptureArmed = false
     private var goodStateStartMs: Long = 0L
     private var networkErrorCount = 0
+    private var captureUserId: String? = null
+    private var captureSessionId: String? = null
+    private var captureAttemptNumber = 0
+    private var sessionCreationJob: Deferred<String?>? = null
 
     // Pro features
     private lateinit var haptics: HapticFeedbackManager
@@ -118,7 +125,8 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "CleaRx"
-        private const val BASE_URL = "http://192.168.1.21:8000/"
+        private const val BASE_URL = "http://192.168.1.2:8000/"
+        private const val TEST_USER_ID = "b3affcc6-4ad0-4c25-bf07-b1fd325de935"
         private const val VALIDATION_INTERVAL_MS = 700L
         private const val AUTO_CAPTURE_HOLD_MS = 1500L
         private const val OFFLINE_THRESHOLD = 4
@@ -139,6 +147,23 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        captureUserId = intent.getStringExtra("user_id") ?: TEST_USER_ID
+        captureSessionId = intent.getStringExtra("session_id")
+        if (captureSessionId == null && captureUserId != null) {
+            sessionCreationJob = lifecycleScope.async(Dispatchers.IO) {
+                try {
+                    val response = RetrofitClient.getProcessingService(BASE_URL)
+                        .createCaptureSession(
+                            MultipartBody.Part.createFormData("user_id", captureUserId!!),
+                        )
+                    val body = response.body()
+                    if (response.isSuccessful && body?.status == "created") body.session_id else null
+                } catch (exception: Exception) {
+                    Log.w(TAG, "Capture session creation failed", exception)
+                    null
+                }
+            }
+        }
 
         @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility = (
@@ -163,6 +188,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        captureSessionId?.let { sessionId ->
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    RetrofitClient.getProcessingService(BASE_URL).closeCaptureSession(
+                        MultipartBody.Part.createFormData("session_id", sessionId),
+                        MultipartBody.Part.createFormData("session_status", "abandoned"),
+                    )
+                } catch (exception: Exception) {
+                    Log.w(TAG, "Capture session close failed", exception)
+                }
+            }
+        }
         super.onDestroy()
         cameraControl?.enableTorch(false)
         validationJob?.cancel()
@@ -199,10 +236,7 @@ class MainActivity : AppCompatActivity() {
         // Bind prescription result views
         prescriptionCard      = findViewById(R.id.prescriptionCard)
         medicinesRecyclerView = findViewById(R.id.medicinesRecyclerView)
-        rxRawText             = findViewById(R.id.rxRawText)
         rxConfidenceBadge     = findViewById(R.id.rxConfidenceBadge)
-
-        rxRawText.movementMethod = android.text.method.ScrollingMovementMethod.getInstance()
 
         medicineAdapter = MedicineAdapter()
         medicinesRecyclerView.layoutManager = LinearLayoutManager(this)
@@ -295,6 +329,12 @@ class MainActivity : AppCompatActivity() {
             val provider = cameraProviderFuture.get()
             cameraProvider = provider
 
+            val cachedSelector = activeCameraSelector
+            if (cachedSelector != null) {
+                bindCameraUseCases(provider, cachedSelector)
+                return@addListener
+            }
+
             val extensionsManagerFuture =
                 ExtensionsManager.getInstanceAsync(this, provider)
 
@@ -302,14 +342,15 @@ class MainActivity : AppCompatActivity() {
                 val extensionsManager = extensionsManagerFuture.get()
                 val baseCameraSelector  = CameraSelector.DEFAULT_BACK_CAMERA
 
-                val (activeCameraSelector, activeExtension) =
+                val (selector, activeExtension) =
                     selectBestCameraSelector(extensionsManager, baseCameraSelector)
 
                 Log.i(TAG, "Camera extension selected: " +
                         if (activeExtension == ExtensionMode.NONE) "NONE (standard)"
                         else extensionModeName(activeExtension))
 
-                bindCameraUseCases(provider, activeCameraSelector)
+                activeCameraSelector = selector
+                bindCameraUseCases(provider, selector)
 
             }, ContextCompat.getMainExecutor(this))
 
@@ -343,6 +384,7 @@ class MainActivity : AppCompatActivity() {
             .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
             .setFlashMode(ImageCapture.FLASH_MODE_OFF)
             .setJpegQuality(100)
+            .setTargetRotation(previewView.display?.rotation ?: Surface.ROTATION_0)
             .build()
 
         stopGatekeeperAnalysis()
@@ -733,6 +775,11 @@ class MainActivity : AppCompatActivity() {
             imageCapture?.takePicture(options, cameraExecutor,
                 object : ImageCapture.OnImageSavedCallback {
                     override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                        if (!normalizeImageOrientation(file)) {
+                            file.delete()
+                            runOnUiThread { showError(UIStrings.ERROR_CAPTURE) }
+                            return
+                        }
                         mainHandler.post { processingStatusText.text = UIStrings.ENHANCING }
                         lifecycleScope.launch(Dispatchers.IO) { sendToBackend(file) }
                     }
@@ -753,22 +800,49 @@ class MainActivity : AppCompatActivity() {
             terminalController.updateStatus(TrOCRStage.INIT)
         }
         try {
+            if (captureSessionId == null) {
+                captureSessionId = sessionCreationJob?.await()
+            }
             val croppedFile = cropToGuideFrame(file) ?: file
 
             withContext(Dispatchers.Main) {
                 terminalController.updateStatus(TrOCRStage.PREPROCESS)
             }
 
-            val part = MultipartBody.Part.createFormData(
+            val originalPart = MultipartBody.Part.createFormData(
+                "file", file.name,
+                file.asRequestBody("image/jpeg".toMediaTypeOrNull()),
+            )
+            val processingPart = MultipartBody.Part.createFormData(
                 "file", croppedFile.name,
                 croppedFile.asRequestBody("image/jpeg".toMediaTypeOrNull()),
             )
+
+            val processingService = RetrofitClient.getProcessingService(BASE_URL)
+            captureAttemptNumber++
+            val imageIdPart = captureSessionId?.let { sessionId ->
+                val imageResponse = processingService.captureImage(
+                    originalPart,
+                    MultipartBody.Part.createFormData("session_id", sessionId),
+                    MultipartBody.Part.createFormData(
+                        "capture_attempt_number", captureAttemptNumber.toString(),
+                    ),
+                )
+                val imageBody = imageResponse.body()
+                if (imageResponse.isSuccessful && imageBody?.status == "created" &&
+                    imageBody.image_id != null
+                ) {
+                    MultipartBody.Part.createFormData("image_id", imageBody.image_id)
+                } else null
+            }
+
+            processingService.validateCapture(originalPart, imageIdPart)
 
             withContext(Dispatchers.Main) {
                 terminalController.updateStatus(TrOCRStage.FEATURE_EXTRACTION)
             }
 
-            val response = RetrofitClient.getProcessingService(BASE_URL).processImage(part)
+            val response = processingService.processImage(processingPart, imageIdPart)
 
             file.delete()
             if (croppedFile != file) croppedFile.delete()
@@ -807,6 +881,43 @@ class MainActivity : AppCompatActivity() {
                 terminalController.forceHide()
                 showError("${UIStrings.ERROR_NETWORK} (${e.message})")
             }
+        }
+    }
+
+    private fun normalizeImageOrientation(file: File): Boolean {
+        return try {
+            val exif = ExifInterface(file)
+            val orientation = exif.getAttributeInt(
+                ExifInterface.TAG_ORIENTATION,
+                ExifInterface.ORIENTATION_NORMAL,
+            )
+            if (orientation == ExifInterface.ORIENTATION_NORMAL ||
+                orientation == ExifInterface.ORIENTATION_UNDEFINED
+            ) return true
+
+            val bitmap = BitmapFactory.decodeFile(file.absolutePath) ?: return false
+            val matrix = Matrix().apply {
+                when (orientation) {
+                    ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> setScale(-1f, 1f)
+                    ExifInterface.ORIENTATION_ROTATE_180 -> setRotate(180f)
+                    ExifInterface.ORIENTATION_FLIP_VERTICAL -> setScale(1f, -1f)
+                    ExifInterface.ORIENTATION_ROTATE_90 -> setRotate(90f)
+                    ExifInterface.ORIENTATION_ROTATE_270 -> setRotate(-90f)
+                    else -> return false
+                }
+            }
+            val normalized = Bitmap.createBitmap(
+                bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true,
+            )
+            file.outputStream().use { output ->
+                if (!normalized.compress(Bitmap.CompressFormat.JPEG, 100, output)) return false
+            }
+            if (normalized !== bitmap) normalized.recycle()
+            bitmap.recycle()
+            true
+        } catch (exception: Exception) {
+            Log.e(TAG, "Image orientation normalization failed", exception)
+            false
         }
     }
 
@@ -923,8 +1034,6 @@ class MainActivity : AppCompatActivity() {
         if (hasPrescriptionData) {
             prescriptionCard.visibility = View.VISIBLE
             medicineAdapter.submitList(result.medicines)
-            rxRawText.text = result.extracted_text ?: "—"
-
             val confidencePct = (result.drug_confidence * 100).toInt()
             val matchLabel    = if (result.drug_matched) "✔ Matched" else "✖ No match"
             rxConfidenceBadge.text = "Drug match: $matchLabel ($confidencePct%)"
