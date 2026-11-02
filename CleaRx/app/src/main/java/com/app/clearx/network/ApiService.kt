@@ -30,6 +30,7 @@ data class QuadPointsResponse(
 
 data class ValidateCaptureResponse(
     val is_usable: Boolean = false,
+    val rejection_reason: String? = null,
     val feedback: FeedbackDetail = FeedbackDetail(),
     val instruction: String = "",
     val quality_score: Int = 0,
@@ -68,7 +69,25 @@ data class ProcessImageResponse(
     val medicines: List<ParsedPrescription> = emptyList(),
 )
 
+data class CaptureImageResponse(
+    val status: String = "error",
+    val image_id: String? = null,
+    val reason: String? = null,
+)
+
+data class CaptureSessionResponse(
+    val status: String = "error",
+    val session_id: String? = null,
+    val reason: String? = null,
+)
+
 interface ApiService {
+
+    @Multipart
+    @POST("capture-session")
+    suspend fun createCaptureSession(
+        @Part userId: MultipartBody.Part,
+    ): Response<CaptureSessionResponse>
 
     @Multipart
     @POST("preview-check")
@@ -80,11 +99,28 @@ interface ApiService {
     @POST("validate-capture")
     suspend fun validateCapture(
         @Part file: MultipartBody.Part,
+        @Part imageId: MultipartBody.Part? = null,
     ): Response<ValidateCaptureResponse>
+
+    @Multipart
+    @POST("capture-image")
+    suspend fun captureImage(
+        @Part file: MultipartBody.Part,
+        @Part sessionId: MultipartBody.Part,
+        @Part captureAttemptNumber: MultipartBody.Part? = null,
+    ): Response<CaptureImageResponse>
+
+    @Multipart
+    @POST("capture-session/close")
+    suspend fun closeCaptureSession(
+        @Part sessionId: MultipartBody.Part,
+        @Part sessionStatus: MultipartBody.Part,
+    ): Response<Unit>
 
     @Multipart
     @POST("process-image")
     suspend fun processImage(
         @Part file: MultipartBody.Part,
+        @Part imageId: MultipartBody.Part? = null,
     ): Response<ProcessImageResponse>
 }
