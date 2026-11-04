@@ -84,9 +84,14 @@ object UIStrings {
         else             -> "✖ $confidence% — Too low for TrOCR"
     }
 
-    fun trocrSubLabel(confidence: Int, passesUsed: Int): String {
+    fun trocrSubLabel(confidence: Int, passesUsed: Int, ocrSource: String?): String {
         val passNote = if (passesUsed > 1) " (enhanced ×$passesUsed)" else ""
-        return "TrOCR confidence: $confidence%$passNote"
+        val provider = when (ocrSource) {
+            "claude-vision" -> "Claude Vision"
+            "trocr-finetuned" -> "TrOCR"
+            else -> "OCR"
+        }
+        return "$provider confidence: $confidence%$passNote"
     }
 
     fun qualityBadge(score: Int): String = when {

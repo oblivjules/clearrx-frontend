@@ -403,10 +403,61 @@
                                 android:id="@+id/prescriptionCard"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
+                                android:layout_marginBottom="14dp"
                                 android:orientation="vertical"
                                 android:visibility="gone">
 
-                            <!-- Section header with red accent strip -->
+                            <LinearLayout
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:orientation="vertical"
+                                    android:paddingBottom="2dp">
+
+                                <!-- Section header with red accent strip -->
+                                <LinearLayout
+                                        android:layout_width="match_parent"
+                                        android:layout_height="wrap_content"
+                                        android:layout_marginBottom="12dp"
+                                        android:gravity="center_vertical"
+                                        android:orientation="horizontal">
+
+                                    <View
+                                            android:layout_width="4dp"
+                                            android:layout_height="20dp"
+                                            android:layout_marginEnd="10dp"
+                                            android:background="@color/brand_primary" />
+
+                                    <TextView
+                                            android:layout_width="0dp"
+                                            android:layout_height="wrap_content"
+                                            android:layout_weight="1"
+                                            android:text="PRESCRIPTION DETAILS"
+                                            android:textColor="@color/text_main"
+                                            android:textSize="13sp"
+                                            android:fontFamily="sans-serif-black"
+                                            android:letterSpacing="0.08"
+                                            android:textAllCaps="true" />
+                                </LinearLayout>
+
+                                <!-- Each medicine is rendered as its own card. -->
+                                <androidx.recyclerview.widget.RecyclerView
+                                        android:id="@+id/medicinesRecyclerView"
+                                        android:layout_width="match_parent"
+                                        android:layout_height="wrap_content"
+                                        android:nestedScrollingEnabled="false" />
+                            </LinearLayout>
+                        </LinearLayout>
+                        <!-- END Prescription Result Section -->
+
+                        <!-- Raw OCR text -->
+                        <LinearLayout
+                                android:id="@+id/rawOcrSection"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="14dp"
+                                android:orientation="vertical"
+                                android:visibility="gone">
+
                             <LinearLayout
                                     android:layout_width="match_parent"
                                     android:layout_height="wrap_content"
@@ -424,10 +475,9 @@
                                         android:layout_width="0dp"
                                         android:layout_height="wrap_content"
                                         android:layout_weight="1"
-                                        android:text="PRESCRIPTION DETAILS"
-                                        android:textColor="@color/text_main"
+                                        android:text="RAW OCR TEXT"
+                                        android:textColor="@color/text_secondary"
                                         android:textSize="13sp"
-                                        android:fontFamily="sans-serif-black"
                                         android:letterSpacing="0.08"
                                         android:textAllCaps="true" />
 
@@ -444,15 +494,18 @@
                                         android:fontFamily="sans-serif-medium" />
                             </LinearLayout>
 
-                            <!-- Medicines RecyclerView -->
-                            <androidx.recyclerview.widget.RecyclerView
-                                    android:id="@+id/medicinesRecyclerView"
+                            <TextView
+                                    android:id="@+id/rawOcrText"
                                     android:layout_width="match_parent"
                                     android:layout_height="wrap_content"
-                                    android:nestedScrollingEnabled="false" />
-
+                                    android:background="@drawable/raw_text_bg"
+                                    android:fontFamily="monospace"
+                                    android:padding="16dp"
+                                    android:textColor="@color/text_main"
+                                    android:textSize="14sp"
+                                    android:lineSpacingExtra="2dp"
+                                    android:textIsSelectable="true" />
                         </LinearLayout>
-                        <!-- END Prescription Result Section -->
 
                     </LinearLayout>
                 </LinearLayout>

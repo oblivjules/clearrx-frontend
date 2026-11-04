@@ -37,9 +37,22 @@ data class ValidateCaptureResponse(
     val document_quad: QuadPointsResponse? = null
 )
 
+data class CaptureImageResponse(
+    val status: String = "error",
+    val image_id: String? = null,
+    val reason: String? = null,
+)
+
+data class CaptureSessionResponse(
+    val status: String = "error",
+    val session_id: String? = null,
+    val reason: String? = null,
+)
+
 data class ParsedPrescription(
     val brand_name: String? = null,
     val drug_name: String? = null,
+    val drug_name_raw: String? = null,
     val dosage: String? = null,
     val frequency: String? = null,
     val route_of_administration: String? = null,
@@ -47,6 +60,25 @@ data class ParsedPrescription(
     val duration: String? = null,
     val meal_relation: String? = null,
     val dispense_quantity: String? = null,
+    val strength: String? = null,
+    val dosage_form: String? = null,
+    val dose_amount: String? = null,
+    val timing: String? = null,
+    val administration_instructions: String? = null,
+    val duration_source: String? = null,
+    val uncertain_fields: List<String>? = emptyList(),
+)
+
+data class CerResult(
+    val cer: Float = 0f,
+    val cer_percent: Float = 0f,
+    val substitutions: Int = 0,
+    val deletions: Int = 0,
+    val insertions: Int = 0,
+    val edit_distance: Int = 0,
+    val ref_length: Int = 0,
+    val hyp_length: Int = 0,
+    val passes_objective: Boolean = false,
 )
 
 data class ProcessImageResponse(
@@ -60,6 +92,7 @@ data class ProcessImageResponse(
     val processing_time_ms: Float = 0f,
     val trocr_confidence: Int = 0,
     val trocr_label: String? = null,
+    val ocr_source: String? = null,
     val passes_used: Int = 1,
     val extracted_text: String? = null,
     val drug_name: String? = null,             // generic (top‑level)
@@ -67,18 +100,8 @@ data class ProcessImageResponse(
     val drug_confidence: Float = 0f,
     val drug_matched: Boolean = false,
     val medicines: List<ParsedPrescription> = emptyList(),
-)
-
-data class CaptureImageResponse(
-    val status: String = "error",
-    val image_id: String? = null,
-    val reason: String? = null,
-)
-
-data class CaptureSessionResponse(
-    val status: String = "error",
-    val session_id: String? = null,
-    val reason: String? = null,
+    // QA/testing only — present when a tester supplied ground_truth for this capture.
+    val cer: CerResult? = null,
 )
 
 interface ApiService {
@@ -117,10 +140,14 @@ interface ApiService {
         @Part sessionStatus: MultipartBody.Part,
     ): Response<Unit>
 
+    // groundTruth is QA/testing-only: a tester types the exact prescription
+    // text so the backend can compute CER (Objective 2.2) against TrOCR's
+    // raw output. Omitted (null) for ordinary captures.
     @Multipart
     @POST("process-image")
     suspend fun processImage(
         @Part file: MultipartBody.Part,
         @Part imageId: MultipartBody.Part? = null,
+        @Part groundTruth: MultipartBody.Part? = null,
     ): Response<ProcessImageResponse>
 }
