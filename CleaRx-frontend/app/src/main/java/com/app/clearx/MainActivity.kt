@@ -77,9 +77,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var saveButton: com.google.android.material.button.MaterialButton
 
     // Prescription result views
-    private lateinit var prescriptionCard: LinearLayout
+    private lateinit var prescriptionCard: View
     private lateinit var medicinesRecyclerView: RecyclerView
     private lateinit var rxConfidenceBadge: TextView
+    private lateinit var rawOcrSection: LinearLayout
+    private lateinit var rawOcrText: TextView
     private lateinit var medicineAdapter: MedicineAdapter
 
     // Camera
@@ -125,7 +127,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "CleaRx"
-        private const val BASE_URL = "http://192.168.1.2:8000/"
+        private const val BASE_URL = "http://192.168.1.3:8000"
         private const val TEST_USER_ID = "b3affcc6-4ad0-4c25-bf07-b1fd325de935"
         private const val VALIDATION_INTERVAL_MS = 700L
         private const val AUTO_CAPTURE_HOLD_MS = 1500L
@@ -146,6 +148,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Log.i(TAG, "CleaRx build version=${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
         setContentView(R.layout.activity_main)
         captureUserId = intent.getStringExtra("user_id") ?: TEST_USER_ID
         captureSessionId = intent.getStringExtra("session_id")
@@ -237,6 +240,8 @@ class MainActivity : AppCompatActivity() {
         prescriptionCard      = findViewById(R.id.prescriptionCard)
         medicinesRecyclerView = findViewById(R.id.medicinesRecyclerView)
         rxConfidenceBadge     = findViewById(R.id.rxConfidenceBadge)
+        rawOcrSection         = findViewById(R.id.rawOcrSection)
+        rawOcrText            = findViewById(R.id.rawOcrText)
 
         medicineAdapter = MedicineAdapter()
         medicinesRecyclerView.layoutManager = LinearLayoutManager(this)
@@ -1022,7 +1027,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val passesUsed = result.passes_used.takeIf { it > 0 } ?: 1
-        val subLabel   = UIStrings.trocrSubLabel(conf, passesUsed)
+        val subLabel   = UIStrings.trocrSubLabel(conf, passesUsed, result.ocr_source)
 
         qualityBadge.text      = badgeText
         qualityBadge.setTextColor(badgeColor)
@@ -1034,6 +1039,8 @@ class MainActivity : AppCompatActivity() {
         if (hasPrescriptionData) {
             prescriptionCard.visibility = View.VISIBLE
             medicineAdapter.submitList(result.medicines)
+            rawOcrSection.visibility = View.VISIBLE
+            rawOcrText.text = result.extracted_text
             val confidencePct = (result.drug_confidence * 100).toInt()
             val matchLabel    = if (result.drug_matched) "✔ Matched" else "✖ No match"
             rxConfidenceBadge.text = "Drug match: $matchLabel ($confidencePct%)"
@@ -1043,11 +1050,15 @@ class MainActivity : AppCompatActivity() {
             )
         } else {
             prescriptionCard.visibility = View.GONE
+            rawOcrSection.visibility = View.GONE
         }
 
         Log.i(TAG, "Result: trocr=$conf%, passes=$passesUsed, " +
                 "drug=${result.drug_name}, extracted=${result.extracted_text}, " +
                 "detection=${result.detection}, time=${result.processing_time_ms}ms")
+        if (BuildConfig.DEBUG) {
+            Log.d(TAG, "Parsed medicines[]: ${result.medicines}")
+        }
     }
 
     private fun showRejectionResult(result: ProcessImageResponse) {
@@ -1057,6 +1068,7 @@ class MainActivity : AppCompatActivity() {
         enhancedImageView.setImageBitmap(null)
         originalImageView.setImageBitmap(null)
         prescriptionCard.visibility = View.GONE  // hide prescription card on rejection
+        rawOcrSection.visibility = View.GONE
 
         val reasonLabel = when (result.reason ?: "") {
             "too_dark"    -> "⚠ TOO DARK"
@@ -1097,6 +1109,7 @@ class MainActivity : AppCompatActivity() {
 
         // reset prescription card for next scan
         prescriptionCard.visibility = View.GONE
+        rawOcrSection.visibility = View.GONE
 
         startCamera()
     }
