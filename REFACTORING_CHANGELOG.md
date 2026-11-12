@@ -85,4 +85,30 @@ backend migration branch; B8 is `dcbe383`. No push or merge was performed.
 - Follow-up: the user reports the requested F3 Android Studio build and
   unit-test run succeeded. Device interaction checks remain unverified by the
   agent. The user approved this commit.
+- Commit: `3466a5b` - `feat(results): show actionable field review guidance`.
+
+## F4 - Guided workflow and accessible result controls
+
+- Priorities #1 and #2, supporting #4: migrate a skippable four-step first-use
+  tour, replayable How to use, workflow status and persisted result text sizes.
+- Include external-processing disclosure in capture guidance and retain the
+  existing detailed privacy notice on capture/crop before submission.
+- Pause camera analysis for the tour, restore prior screen state afterward,
+  prevent resume from restarting capture under the tour, and cancel the overlay
+  on activity destruction. Back closes the guide. Keep tour text scrollable and
+  hide underlying controls from accessibility while the guide is active.
+- Preserve result explanations on demand without automatic result popups.
+  Replace the misleading Continue toast claiming an image was saved with neutral
+  next-prescription wording. No save action is added.
+- Verification: all 34 resource/manifest XML files parse; Kotlin string/id
+  references, unique view IDs, retained upload/privacy controls and whitespace
+  checks pass. Recompiled the unchanged pure Kotlin regression suite using cached
+  Kotlin/JUnit on Java 17: 18 tests passed. This does not compile or exercise the
+  new Android UI code. Full F4 Android build/test and device checks remain pending;
+  Gradle execution was previously declined, so it was not requested again.
+  Verify first-use/replayed tour, Skip/Back, rotation/backgrounding, camera
+  restart, gallery without camera permission, large text and results Details.
+- Follow-up: the user reports the requested F4 Android Studio verification
+  succeeded and approves the commit. This is user-provided verification; the
+  agent did not execute the Android build or device interaction checks.
 - Commit: approved; reference recorded in the next entry.

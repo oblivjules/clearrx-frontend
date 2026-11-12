@@ -16,6 +16,7 @@ import android.util.Log
 import android.util.Size
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.animation.AlphaAnimation
 import android.view.animation.Animation
 import android.widget.*
@@ -55,6 +56,87 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
+
+    private val usabilityPreferences by lazy { getSharedPreferences("usability", MODE_PRIVATE) }
+    private var productTour: ProductTourView? = null
+
+    private fun updateWorkflow(step: Int, label: String) {
+        findViewById<TextView>(R.id.workflowProgress).text = "Step $step of 4: $label"
+    }
+
+    private fun showProductTour() {
+        if (productTour != null || (isCapturing && resultScreen.visibility != View.VISIBLE) ||
+            isFinishing || isDestroyed) return
+        val wasCameraSuppressed = cameraSuppressed
+        cameraSuppressed = true
+        releaseCamera()
+        val contentRoot = findViewById<ViewGroup>(android.R.id.content)
+        val processingOverlay = findViewById<View>(R.id.processingOverlay)
+        val resultScreen = findViewById<View>(R.id.resultScreen)
+        val prescriptionCard = findViewById<View>(R.id.prescriptionCard)
+        val detailsPanel = findViewById<View>(R.id.detailsPanel)
+        val cameraContainer = findViewById<View>(R.id.cameraContainer)
+        val rawOcrSection = findViewById<View>(R.id.rawOcrSection)
+        val rxConfidenceBadge = findViewById<TextView>(R.id.rxConfidenceBadge)
+        val originalConfidenceText = rxConfidenceBadge.text
+        val originalVisibility = mapOf(
+            processingOverlay to processingOverlay.visibility,
+            resultScreen to resultScreen.visibility,
+            prescriptionCard to prescriptionCard.visibility,
+            detailsPanel to detailsPanel.visibility,
+            rawOcrSection to rawOcrSection.visibility,
+        )
+        val activityContent = contentRoot.getChildAt(0)
+        val originalAccessibility = activityContent.importantForAccessibility
+        activityContent.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+        val originalCameraBackground = cameraContainer.background
+        cameraContainer.setBackgroundColor(ContextCompat.getColor(this, R.color.brand_primary_dark))
+        val tour = ProductTourView(
+            context = this,
+            targets = listOf(
+                findViewById(R.id.captureButton),
+                findViewById(R.id.processingStatusText),
+                findViewById(R.id.rxConfidenceBadge),
+                findViewById(R.id.detailsToggle),
+            ),
+            fallbackTarget = findViewById(R.id.workflowProgress),
+            onStepChanged = { step ->
+                processingOverlay.visibility = if (step == 1) View.VISIBLE else View.GONE
+                resultScreen.visibility = if (step >= 2) View.VISIBLE else View.GONE
+                prescriptionCard.visibility = if (step >= 2) View.VISIBLE else originalVisibility[prescriptionCard] ?: View.GONE
+                detailsPanel.visibility = if (step == 2) View.VISIBLE else originalVisibility[detailsPanel] ?: View.GONE
+                rawOcrSection.visibility = if (step == 2) View.VISIBLE else originalVisibility[rawOcrSection] ?: View.GONE
+                if (step == 2) rxConfidenceBadge.text = "Name similarity: review this label"
+                else rxConfidenceBadge.text = originalConfidenceText
+            },
+        ) {
+            originalVisibility.forEach { (view, visibility) -> view.visibility = visibility }
+            rxConfidenceBadge.text = originalConfidenceText
+            cameraContainer.background = originalCameraBackground
+            usabilityPreferences.edit().putBoolean("onboarding_complete", true).apply()
+            contentRoot.removeView(productTour)
+            productTour = null
+            activityContent.importantForAccessibility = originalAccessibility
+            cameraSuppressed = wasCameraSuppressed
+            resumeLiveCameraIfNeeded()
+        }
+        productTour = tour
+        contentRoot.addView(tour, ViewGroup.LayoutParams.MATCH_PARENT.let { width ->
+            ViewGroup.LayoutParams(width, ViewGroup.LayoutParams.MATCH_PARENT)
+        })
+        tour.show()
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    private fun applyOutputTextSize() {
+        val scale = usabilityPreferences.getInt("output_size", 0).coerceIn(0, 2)
+        val factor = listOf(1f, 1.2f, 1.4f)[scale]
+        medicineAdapter.setTextScale(factor)
+        rawOcrText.textSize = 14f * factor
+        findViewById<TextView>(R.id.readerDisclaimer).textSize = 12f * factor
+        findViewById<TextView>(R.id.resultMessage).textSize = 13f * factor
+    }
 
     // Views
     private lateinit var previewView: PreviewView
@@ -221,13 +303,25 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.processingPrivacyNotice).setOnClickListener { showProcessingPrivacy() }
         cameraExecutor = Executors.newSingleThreadExecutor()
         haptics = HapticFeedbackManager(this)
+        applyOutputTextSize()
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                val tour = productTour
+                if (tour != null) tour.finish() else {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                    isEnabled = true
+                }
+            }
+        })
         // Camera permission/startup runs when the activity resumes.
     }
 
     override fun onResume() {
         super.onResume()
         isActivityResumed = true
-        resumeLiveCameraIfNeeded()
+        if (!usabilityPreferences.getBoolean("onboarding_complete", false)) showProductTour()
+        else resumeLiveCameraIfNeeded()
     }
 
     override fun onPause() {
@@ -237,6 +331,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        productTour?.let { (it.parent as? ViewGroup)?.removeView(it) }
+        productTour = null
         isActivityResumed = false
         releaseCamera()
         captureSessionId?.let { sessionId ->
@@ -324,6 +420,17 @@ class MainActivity : AppCompatActivity() {
 
     @SuppressLint("ClickableViewAccessibility")
     private fun setupListeners() {
+        findViewById<View>(R.id.howToUseButton).setOnClickListener { showProductTour() }
+        findViewById<View>(R.id.textSizeButton).setOnClickListener {
+            MaterialAlertDialogBuilder(this, R.style.ThemeOverlay_CleaRx_Dialog)
+                .setTitle(R.string.text_size)
+                .setSingleChoiceItems(arrayOf("Standard", "Large", "Extra large"),
+                    usabilityPreferences.getInt("output_size", 0).coerceIn(0, 2)) { dialog, choice ->
+                    usabilityPreferences.edit().putInt("output_size", choice).apply()
+                    applyOutputTextSize()
+                    dialog.dismiss()
+                }.setNegativeButton("Close", null).show()
+        }
         flashlightButton.setOnClickListener {
             isFlashOn = !isFlashOn
             cameraControl?.enableTorch(isFlashOn)
@@ -344,7 +451,7 @@ class MainActivity : AppCompatActivity() {
         retakeButton.setOnClickListener { resetToCamera() }
 
         saveButton.setOnClickListener {
-            Toast.makeText(this, "Image saved!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Ready for the next prescription", Toast.LENGTH_SHORT).show()
             resetToCamera()
         }
 
@@ -386,7 +493,7 @@ class MainActivity : AppCompatActivity() {
             PackageManager.PERMISSION_GRANTED
 
     private fun isLiveCameraPage(): Boolean =
-        !isFinishing && !isDestroyed && isActivityResumed && !cameraSuppressed &&
+        !isFinishing && !isDestroyed && isActivityResumed && !cameraSuppressed && productTour == null &&
             ::cameraContainer.isInitialized && cameraContainer.visibility == View.VISIBLE &&
             ::resultScreen.isInitialized && resultScreen.visibility != View.VISIBLE && !isCapturing
 
@@ -1050,6 +1157,7 @@ class MainActivity : AppCompatActivity() {
             }
             processingFile = croppedFile
             withContext(Dispatchers.Main) {
+                updateWorkflow(2, "Check the image")
                 terminalController.updateStatus(TrOCRStage.PREPROCESS)
             }
 
@@ -1131,6 +1239,7 @@ class MainActivity : AppCompatActivity() {
             )
 
             withContext(Dispatchers.Main) {
+                updateWorkflow(3, "Read handwriting and look up names")
                 terminalController.updateStatus(TrOCRStage.FEATURE_EXTRACTION)
             }
 
@@ -1294,6 +1403,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showResult(result: ProcessImageResponse) {
+        updateWorkflow(4, "Read and compare results")
         findViewById<View>(R.id.detailsPanel).visibility = View.GONE
         findViewById<TextView>(R.id.detailsToggle).setText(R.string.show_details)
         ViewCompat.setStateDescription(findViewById(R.id.detailsToggle), "Collapsed")
@@ -1364,6 +1474,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showRejectionResult(result: ProcessImageResponse) {
+        updateWorkflow(1, "Retake or choose an image")
         findViewById<View>(R.id.detailsPanel).visibility = View.GONE
         findViewById<TextView>(R.id.detailsToggle).setText(R.string.show_details)
         ViewCompat.setStateDescription(findViewById(R.id.detailsToggle), "Collapsed")
@@ -1399,6 +1510,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showError(message: String, uploadedFile: Boolean = false) {
+        updateWorkflow(1, "Try another image")
         terminalController.forceHide()
         processingOverlay.visibility = View.GONE
         MaterialAlertDialogBuilder(this)
@@ -1414,6 +1526,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun resetToCamera() {
+        updateWorkflow(1, "Capture or choose an image")
         cameraSuppressed = false
         selectFileButton.setSelectedState(false)
         isCapturing          = false
