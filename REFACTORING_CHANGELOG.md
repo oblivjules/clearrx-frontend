@@ -221,3 +221,16 @@ performed. Release network processing still requires a configured HTTPS endpoint
   this commit. This is user-provided verification; device and live OCR behavior
   were not independently tested by the agent.
 - Commit: approved as `fix(network): configure variant backend endpoints`.
+
+## Post-migration - Recognition disclosure alignment
+
+- Update the picker accessibility description for the approved genuine-local
+  primary backend and explicitly selected external option. Public labels and
+  multipart model identifiers are unchanged.
+- Only XML parsing has verified this wording change; it was made after the debug
+  APK build. Rebuild and frontend regression checks remain pending.
+- This small frontend commit accompanies the separate backend routing change;
+  neither repository nor the deployed service has been committed/deployed here.
+- Follow-up: the user reports successful Android verification and approves
+  this wording commit. Backend counterpart: `8665530`; endpoint commit: `0d66946`.
+- Commit: approved as `fix(ocr): align recognition option disclosure`.
