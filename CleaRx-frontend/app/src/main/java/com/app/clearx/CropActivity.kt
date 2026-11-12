@@ -270,8 +270,7 @@ class CropActivity : AppCompatActivity() {
                         bitmap.compress(Bitmap.CompressFormat.JPEG, 95, stream)
                         stream.toByteArray()
                     }
-                    val baseUrl = intent.getStringExtra(EXTRA_BASE_URL)
-                        ?: error("Missing server address")
+                    val baseUrl = BuildConfig.BACKEND_BASE_URL
                     RetrofitClient.getService(baseUrl).validateUpload(
                         MultipartBody.Part.createFormData(
                             "file", "crop.jpg", bytes.toRequestBody("image/jpeg".toMediaType()),
@@ -332,7 +331,6 @@ class CropActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_SOURCE = "source_file"
-        const val EXTRA_BASE_URL = "base_url"
         const val EXTRA_UPLOAD_AGAIN = "upload_again"
         const val EXTRA_CROPPED = "cropped_file"
     }

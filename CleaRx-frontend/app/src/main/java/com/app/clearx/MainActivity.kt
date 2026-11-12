@@ -221,7 +221,6 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "CleaRx"
-        private const val BASE_URL = "http://192.168.1.3:8000/"
         private const val TEST_USER_ID = "b3affcc6-4ad0-4c25-bf07-b1fd325de935"
         private const val VALIDATION_INTERVAL_MS = 700L
         private const val AUTO_CAPTURE_HOLD_MS = 1500L
@@ -294,7 +293,7 @@ class MainActivity : AppCompatActivity() {
         if (captureSessionId == null && captureUserId != null) {
             sessionCreationJob = lifecycleScope.async(Dispatchers.IO) {
                 try {
-                    val response = RetrofitClient.getProcessingService(BASE_URL)
+                    val response = RetrofitClient.getProcessingService(BuildConfig.BACKEND_BASE_URL)
                         .createCaptureSession(
                             MultipartBody.Part.createFormData("user_id", captureUserId!!),
                         )
@@ -363,7 +362,7 @@ class MainActivity : AppCompatActivity() {
         captureSessionId?.let { sessionId ->
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    RetrofitClient.getProcessingService(BASE_URL).closeCaptureSession(
+                    RetrofitClient.getProcessingService(BuildConfig.BACKEND_BASE_URL).closeCaptureSession(
                         MultipartBody.Part.createFormData("session_id", sessionId),
                         MultipartBody.Part.createFormData("session_status", "abandoned"),
                     )
@@ -797,7 +796,7 @@ class MainActivity : AppCompatActivity() {
         consecutiveBadFrames = 0
 
         validationJob = lifecycleScope.launch(Dispatchers.IO) {
-            val api = RetrofitClient.getService(BASE_URL)
+            val api = RetrofitClient.getService(BuildConfig.BACKEND_BASE_URL)
             while (isActive && !isCapturing) {
                 if (aeConverged) runPreviewCheck(api)
                 delay(VALIDATION_INTERVAL_MS)
@@ -1073,7 +1072,6 @@ class MainActivity : AppCompatActivity() {
         cropLauncher.launch(
             android.content.Intent(this, CropActivity::class.java)
                 .putExtra(CropActivity.EXTRA_SOURCE, sourceFile.absolutePath)
-                .putExtra(CropActivity.EXTRA_BASE_URL, BASE_URL)
         )
     }
 
@@ -1199,7 +1197,7 @@ class MainActivity : AppCompatActivity() {
                     }.toMediaTypeOrNull()
                 ),
             )
-            val processingService = RetrofitClient.getProcessingService(BASE_URL)
+            val processingService = RetrofitClient.getProcessingService(BuildConfig.BACKEND_BASE_URL)
             val imageIdPart = captureSessionId?.let { sessionId ->
                 val imageId = if (uploadedFile) {
                     val response = processingService.uploadFile(

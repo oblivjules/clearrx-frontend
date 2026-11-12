@@ -196,3 +196,28 @@ Backend final commit: `dcbe383`. Frontend F1-F5 references are recorded above.
 No push, merge, deployment, live database migration or accuracy evaluation was
 performed. Release network processing still requires a configured HTTPS endpoint.
 
+## Post-migration - Release endpoint configuration
+
+- Separate from F1-F6: release BuildConfig.BACKEND_BASE_URL uses
+  https://clearx-refactored.onrender.com/. Debug defaults to the existing local
+  address and supports `-Pclearx.debugBackendUrl=http://10.0.2.2:8000/` or a
+  `clearx.debugBackendUrl` entry in the developer's Gradle user properties.
+- Normalize the trailing slash and validate the debug URL. MainActivity and crop
+  validation consume the variant BuildConfig value rather than intent-supplied
+  or repeated application URLs. Existing Retrofit client caching is preserved.
+- Generate a debug-only network policy for the configured host. Release retains
+  the main HTTPS-only policy, system certificate trust and disabled HTTP logging.
+- Read-only health/OpenAPI GETs returned HTTP 200 over HTTPS. Advertised routes
+  and form/multipart fields match the client. The deployed processing default
+  still advertises the earlier provider identifier; acceptance of the public
+  primary ID and actual OCR behavior have not been established by these GETs.
+- Debug APK was packaged and debug/release BuildConfig values were inspected.
+  Release assembly stopped at lint because lint-gradle:31.3.2 was not cached.
+  Permission for its download and a subsequent offline unit-test run was declined.
+  Full release assembly/frontend regression tests therefore remain pending.
+  Compiled release network resources were inspected with aapt2: no HTTP domain
+  exceptions. Release merged manifest is not debuggable and denies cleartext.
+- Follow-up: the user reports successful Android verification and approves
+  this commit. This is user-provided verification; device and live OCR behavior
+  were not independently tested by the agent.
+- Commit: approved as `fix(network): configure variant backend endpoints`.
