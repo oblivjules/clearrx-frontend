@@ -11,14 +11,16 @@
 
     <!-- Status Colors -->
     <color name="status_success">#2E7D32</color>
-    <color name="status_warning">#E65100</color>
+    <color name="status_warning">#8A4300</color>
     <color name="status_error">#C62828</color>
 
     <!-- Text Colors -->
     <color name="text_main">#212121</color>
-    <color name="text_secondary">#757575</color>
+    <color name="text_secondary">#616161</color>
 
     <!-- Chip / Tag Colors -->
     <color name="chip_bg">#FCE4EC</color>
     <color name="chip_text">#B71C1C</color>
+    <color name="border_subtle">#E0E0E0</color>
+    <color name="notice_background">#F4F4F4</color>
 </resources>

@@ -14,4 +14,28 @@
     <string name="processing_privacy_short">Images may be processed by an external AI service. Tap for privacy details.</string>
     <string name="processing_privacy_title">How your prescription is processed</string>
     <string name="processing_privacy_body">CleaRx may send your prescription image or extracted information to an external AI service to read handwriting and prepare results. Images can contain personal or health information. Share only images you are allowed to use.\n\nExternal processing uses an encrypted provider connection. This does not guarantee that a local connection from your phone to the backend is encrypted. Images and records may remain stored after this session. Automatic deletion and masking are not implemented, and provider retention or training guarantees have not been verified.</string>
+    <string name="show_details">Details  +</string>
+    <string name="hide_details">Details  −</string>
+    <string name="text_size">Result text size</string>
+    <string name="reader_disclaimer">CleaRx is a prescription reader and decision aid, not a verifier. Compare every extracted field against the original prescription. CleaRx does not make dispensing decisions.</string>
+    <string name="reader_disclaimer_compact">Prescription reader and decision aid, not a verifier. Compare all fields with the original. CleaRx does not make dispensing decisions.</string>
+    <string name="original_photo">Original prescription</string>
+    <string name="enhanced_photo">Enhanced image</string>
+    <string name="raw_text">Recognized text (OCR)</string>
+
+    <string name="review_guidance">Fields marked ⚠ Double-check or ✖ Verify, and unmatched names, need closer comparison with the original. Confidence labels describe recognition or matching, not medication safety.</string>
+    <string name="review_guidance_compact">Compare flagged or unmatched fields with the original. Confidence is not a safety rating.</string>
+
+    <string name="tier_high_line">No detected field warnings: compare with the photo</string>
+    <string name="tier_medium_line">⚠ Double-check the highlighted fields</string>
+    <string name="tier_low_line">✖ Verify against the original photo</string>
+    <string name="tier_medium_field">⚠ Double-check</string>
+    <string name="tier_low_field">✖ Verify</string>
+
+    <string name="confidence_explainer_title">How to read the confidence labels</string>
+    <string name="confidence_explainer_body">These labels summarize detected field warnings. They are not a verified accuracy percentage or a check that a medicine is right or safe.\n\nNo detected warnings means the available checks found no field warnings; errors can still be present. Compare every medicine and instruction with the photo.\n\nDouble-check means a field is unclear, incomplete, or conflicts with the catalog.\n\nVerify means CleaRx could not resolve the medicine name reliably. Confirm against the original prescription or the prescriber.\n\nName similarity measures spelling agreement only. OCR confidence may be unavailable. Missing fields show Not found.</string>
+    <string name="confidence_explainer_ok">Got it</string>
+    <string name="confidence_badge_description">%1$s. Tap to learn what the confidence labels mean.</string>
+    <string name="save_failed_notice">Reading completed, but saving failed. This result has not been saved. Keep it open and try processing again later.</string>
+    <string name="no_medicine_cards">No medicine cards could be created. Open Details to compare the photo and readable text, or retake the photo.</string>
 </resources>

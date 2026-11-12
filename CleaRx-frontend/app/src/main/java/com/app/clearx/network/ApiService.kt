@@ -57,26 +57,6 @@ data class FileUploadResponse(
     val size_bytes: Long = 0,
 )
 
-data class ParsedPrescription(
-    val brand_name: String? = null,
-    val drug_name: String? = null,
-    val drug_name_raw: String? = null,
-    val dosage: String? = null,
-    val frequency: String? = null,
-    val route_of_administration: String? = null,
-    val quantity: String? = null,
-    val duration: String? = null,
-    val meal_relation: String? = null,
-    val dispense_quantity: String? = null,
-    val strength: String? = null,
-    val dosage_form: String? = null,
-    val dose_amount: String? = null,
-    val timing: String? = null,
-    val administration_instructions: String? = null,
-    val duration_source: String? = null,
-    val uncertain_fields: List<String>? = emptyList(),
-)
-
 data class CerResult(
     val cer: Float = 0f,
     val cer_percent: Float = 0f,
@@ -90,6 +70,11 @@ data class CerResult(
 )
 
 data class ProcessImageResponse(
+    val ocr_confidence: Float? = null,
+    val ocr_confidence_basis: String? = null,
+    val name_similarity: Float? = null,
+    val review_required: Boolean = false,
+    val persistence_status: String? = null,
     val status: String = "error",
     val detection: String = "full_frame",
     val reason: String? = null,

@@ -60,4 +60,29 @@ backend migration branch; B8 is `dcbe383`. No push or merge was performed.
   Follow-up: the user reports that the requested F2 Android Studio build and
   unit-test run succeeded. This is user-provided verification; device interaction
   checks have not been independently verified by the agent.
-- Commit: approved by the user; commit reference recorded in the next entry.
+- Commit: `b3dcd6c` - `feat(capture): add file selection and prescription cropping`.
+
+## F3 - Actionable result and field review guidance
+
+- Priorities #2, #4 and #5, with #1 result hierarchy: show medicine cards before
+  collapsible image/text details; retain capture/upload privacy notices.
+- Migrate provisional 95/80 tiers, explicit field warnings, unresolved-name
+  guidance, missing critical fields, and narrow-screen/large-text card stacking.
+  Labels describe detected warnings, not medication safety or verified accuracy.
+- Add review/provenance response fields. Label catalog scores as name similarity;
+  do not substitute image quality for missing OCR confidence. Strip OCR annotation
+  markers only for display. Keep a separate persistent saving-failure notice.
+- Remove prescription text/medicine payloads from result logs. Preserve camera
+  lifecycle, upload/cropping and default recognition selection from F1/F2.
+- Separate Android resource mappings and the prescription DTO from the pure tier
+  rules so regression tests run without an Android runtime or generated resources.
+- Verification: 18 cached Kotlin/JVM tests passed on Java 17, including six review
+  policy cases. Parsed all 34 resource/manifest XML files; Kotlin string/id
+  references, result ordering, retained F2 controls and whitespace checks passed.
+  These checks do not compile Android-dependent UI code. The full Gradle build
+  and Android unit-test request was declined; F3 Android Studio build/tests and
+  device checks (details, review labels, large text, saving failures) are pending.
+- Follow-up: the user reports the requested F3 Android Studio build and
+  unit-test run succeeded. Device interaction checks remain unverified by the
+  agent. The user approved this commit.
+- Commit: approved; reference recorded in the next entry.

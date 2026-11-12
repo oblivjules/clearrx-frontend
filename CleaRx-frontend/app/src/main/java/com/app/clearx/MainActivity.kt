@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.net.Uri
+import androidx.core.view.ViewCompat
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -276,6 +277,13 @@ class MainActivity : AppCompatActivity() {
         terminalProgressText = findViewById(R.id.terminalProgressText)
         terminalCursor       = findViewById(R.id.terminalCursor)
         resultScreen         = findViewById(R.id.resultScreen)
+        findViewById<TextView>(R.id.detailsToggle).setOnClickListener { view ->
+            val panel = findViewById<View>(R.id.detailsPanel)
+            val expanded = panel.visibility != View.VISIBLE
+            panel.visibility = if (expanded) View.VISIBLE else View.GONE
+            (view as TextView).setText(if (expanded) R.string.hide_details else R.string.show_details)
+            ViewCompat.setStateDescription(view, if (expanded) "Expanded" else "Collapsed")
+        }
         enhancedImageView  = findViewById(R.id.enhancedImageView)
         originalImageView  = findViewById(R.id.originalImageView)
         qualityBadge       = findViewById(R.id.qualityBadge)
@@ -1286,6 +1294,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showResult(result: ProcessImageResponse) {
+        findViewById<View>(R.id.detailsPanel).visibility = View.GONE
+        findViewById<TextView>(R.id.detailsToggle).setText(R.string.show_details)
+        ViewCompat.setStateDescription(findViewById(R.id.detailsToggle), "Collapsed")
+        findViewById<TextView>(R.id.resultMessage).text = if (result.medicines.isEmpty())
+            getString(R.string.no_medicine_cards)
+        else getString(R.string.review_guidance_compact)
+        saveButton.visibility = View.VISIBLE
+        enhancedImageView.setImageDrawable(null)
+        originalImageView.setImageDrawable(null)
         processingOverlay.visibility = View.GONE
         resultScreen.visibility      = View.VISIBLE
 
@@ -1299,67 +1316,65 @@ class MainActivity : AppCompatActivity() {
             originalImageView.setImageBitmap(BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
         }
 
-        val conf = if (result.trocr_confidence > 0) result.trocr_confidence
-        else result.quality_score
+        val conf = ConfidenceTier.readScore(result.ocr_confidence, result.trocr_confidence)
 
-        val isBestEffort = result.detection == "full_frame" ||
-                result.detection == "frame_region"
+        // Overall confidence: icon + action-oriented text, colour only reinforces it.
+        val baseTier = ConfidenceTier.overall(conf, result.medicines, result.drug_matched)
+        val tier = if (result.review_required)
+            ConfidenceTier.worst(baseTier, ConfidenceTier.MEDIUM) else baseTier
+        val tierLine = getString(tier.lineRes)
 
-        val badgeText = when {
-            isBestEffort         -> UIStrings.qualityBadge(conf)
-            conf >= 95           -> "✔ ${conf}% — TrOCR Ready"
-            conf >= 80           -> "⚠ ${conf}% — Usable"
-            conf >= 60           -> "⚠ ${conf}% — Poor"
-            else                 -> "✖ ${conf}% — Retake"
+        qualityBadge.text      = tierLine
+        qualityBadge.setTextColor(ContextCompat.getColor(this, tier.colorRes))
+        qualityBadge.contentDescription = getString(R.string.confidence_badge_description, tierLine)
+        qualityBadge.setOnClickListener {
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.confidence_explainer_title)
+                .setMessage(R.string.confidence_explainer_body)
+                .setPositiveButton(R.string.confidence_explainer_ok, null)
+                .show()
         }
-
-        val badgeColor = when {
-            conf >= 95 -> Color.parseColor("#4CAF50")
-            conf >= 80 -> Color.parseColor("#FFC107")
-            else       -> Color.parseColor("#F44336")
-        }
-
-        val passesUsed = result.passes_used.takeIf { it > 0 } ?: 1
-        val subLabel   = UIStrings.trocrSubLabel(conf, passesUsed, result.ocr_source)
-
-        qualityBadge.text      = badgeText
-        qualityBadge.setTextColor(badgeColor)
-        qualityScoreText.text  = subLabel
+        findViewById<View>(R.id.persistenceWarning).visibility =
+            if (result.persistence_status == "failed") View.VISIBLE else View.GONE
+        qualityScoreText.text = ""
+        qualityScoreText.visibility = View.GONE
 
         // Populate prescription section
-        val hasPrescriptionData = !result.extracted_text.isNullOrBlank()
+        val hasPrescriptionData = result.medicines.isNotEmpty() || !result.extracted_text.isNullOrBlank()
 
         if (hasPrescriptionData) {
             prescriptionCard.visibility = View.VISIBLE
             medicineAdapter.submitList(result.medicines)
             rawOcrSection.visibility = View.VISIBLE
-            rawOcrText.text = result.extracted_text
-            val confidencePct = (result.drug_confidence * 100).toInt()
+            rawOcrText.text = result.extracted_text?.let { withoutUncertaintyMarkers(it) }
+            val confidencePct = (result.name_similarity ?: (result.drug_confidence * 100)).toInt()
             val matchLabel    = if (result.drug_matched) "✔ Matched" else "✖ No match"
-            rxConfidenceBadge.text = "Drug match: $matchLabel ($confidencePct%)"
+            rxConfidenceBadge.text = "Name similarity: $confidencePct% - $matchLabel"
             rxConfidenceBadge.setTextColor(
-                if (result.drug_matched) Color.parseColor("#4CAF50")
-                else Color.parseColor("#F44336")
+                if (result.review_required) ContextCompat.getColor(this, R.color.status_warning)
+                else if (result.drug_matched) ContextCompat.getColor(this, R.color.status_success)
+                else ContextCompat.getColor(this, R.color.status_error)
             )
         } else {
             prescriptionCard.visibility = View.GONE
             rawOcrSection.visibility = View.GONE
         }
 
-        Log.i(TAG, "Result: trocr=$conf%, passes=$passesUsed, " +
-                "drug=${result.drug_name}, extracted=${result.extracted_text}, " +
-                "detection=${result.detection}, time=${result.processing_time_ms}ms")
-        if (BuildConfig.DEBUG) {
-            Log.d(TAG, "Parsed medicines[]: ${result.medicines}")
-        }
+        Log.i(TAG, "Result status=${result.status}, source=${result.ocr_source}, time=${result.processing_time_ms}ms")
     }
 
     private fun showRejectionResult(result: ProcessImageResponse) {
+        findViewById<View>(R.id.detailsPanel).visibility = View.GONE
+        findViewById<TextView>(R.id.detailsToggle).setText(R.string.show_details)
+        ViewCompat.setStateDescription(findViewById(R.id.detailsToggle), "Collapsed")
+        findViewById<TextView>(R.id.resultMessage).text = result.message ?: "No readable prescription was found. Retake the photo or choose another image."
+        saveButton.visibility = View.GONE
+        findViewById<View>(R.id.persistenceWarning).visibility = View.GONE
         processingOverlay.visibility = View.GONE
         resultScreen.visibility      = View.VISIBLE
 
         enhancedImageView.setImageBitmap(null)
-        originalImageView.setImageBitmap(null)
+        originalImageView.setImageDrawable(null)
         prescriptionCard.visibility = View.GONE  // hide prescription card on rejection
         rawOcrSection.visibility = View.GONE
 
@@ -1373,8 +1388,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         qualityBadge.text = reasonLabel
-        qualityBadge.setTextColor(Color.parseColor("#F44336"))
+        qualityBadge.setTextColor(ContextCompat.getColor(this, R.color.status_error))
+        // A rejection is not a confidence result, so the explainer tap is switched off here.
+        qualityBadge.isClickable = false
+        qualityBadge.contentDescription = null
         qualityScoreText.text = result.message ?: "Please retake the photo."
+        qualityScoreText.visibility = View.VISIBLE
 
         retakeButton.requestFocus()
     }
