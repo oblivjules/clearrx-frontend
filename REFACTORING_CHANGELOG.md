@@ -137,7 +137,7 @@ backend migration branch; B8 is `dcbe383`. No push or merge was performed.
   unit tests succeeded and approves proceeding. This is user-provided build/test
   verification; device transport and backup/restore behavior remain unverified
   by the agent.
-- Commit: approved; reference recorded in the next entry.
+- Commit: `bdacad3` - `fix(security): restrict Android transport and backups`.
 
 ### F5 operational notes
 
@@ -162,3 +162,37 @@ backend migration branch; B8 is `dcbe383`. No push or merge was performed.
   NONE release logging; this is not a claim that all app/backend logs are audited.
 - References: [Android network security configuration](https://developer.android.com/privacy-and-security/security-config)
   and [Android backup rules](https://developer.android.com/identity/data/autobackup).
+
+## F6 - Public recognition-model selection
+
+- Priority #2: migrate a persisted recognition picker with the approved public
+  options CleaRx TrOCR and Claude Sonnet 5.5. Use the backend public primary
+  identifier `clearx-trocr`; retain truthful remote-processing disclosure.
+- Add the optional model multipart field. Camera and uploaded crops share the
+  same processing request path and snapshot the selection before submission.
+- Disable selection during a processing attempt; restore it on reset. Preserve
+  the current result layout, replayed tour state and F5 debug/release policies.
+- Missing or unsupported saved IDs safely select the primary option. Provider
+  availability is still a backend/runtime concern; the picker does not establish
+  that a model is available or that recognition accuracy targets were achieved.
+- Verification: 20 isolated Kotlin/JVM tests passed using cached Kotlin/JUnit
+  on Java 17, including saved-model restoration and invalid/missing preference
+  fallback. All source XML parses; string/id references, unique view IDs, retained
+  privacy/upload controls, backend option identifiers and whitespace checks pass.
+  These checks do not compile Android UI or exercise multipart HTTP requests.
+  F6 Android Studio build/unit tests and picker interaction remain pending.
+  Check both camera/upload paths, persistence after relaunch, disabled selection
+  during processing, reset, tour replay and actual returned OCR source. Live
+  provider calls and backend runtime model availability were not tested.
+- Follow-up: the user reports the requested F6 Android Studio verification
+  succeeded and explicitly approves this commit. This is user-provided
+  verification; live provider calls and model availability were not independently
+  tested by the agent.
+- Commit: approved as `feat(ocr): add public recognition-model selection`.
+  Resolve its hash with `git log -1 --format=%h --grep="^feat(ocr): add public recognition-model selection$"`.
+
+The approved B1-B8 and F1-F6 commit sequence is complete upon this commit.
+Backend final commit: `dcbe383`. Frontend F1-F5 references are recorded above.
+No push, merge, deployment, live database migration or accuracy evaluation was
+performed. Release network processing still requires a configured HTTPS endpoint.
+

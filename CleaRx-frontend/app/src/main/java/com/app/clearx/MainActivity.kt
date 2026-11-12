@@ -59,6 +59,7 @@ class MainActivity : AppCompatActivity() {
 
     private val usabilityPreferences by lazy { getSharedPreferences("usability", MODE_PRIVATE) }
     private var productTour: ProductTourView? = null
+    private var selectedRecognitionModel = RecognitionModel.PRIMARY
 
     private fun updateWorkflow(step: Int, label: String) {
         findViewById<TextView>(R.id.workflowProgress).text = "Step $step of 4: $label"
@@ -80,6 +81,7 @@ class MainActivity : AppCompatActivity() {
         val rxConfidenceBadge = findViewById<TextView>(R.id.rxConfidenceBadge)
         val originalConfidenceText = rxConfidenceBadge.text
         val originalVisibility = mapOf(
+            findViewById<View>(R.id.modelPicker) to findViewById<View>(R.id.modelPicker).visibility,
             processingOverlay to processingOverlay.visibility,
             resultScreen to resultScreen.visibility,
             prescriptionCard to prescriptionCard.visibility,
@@ -101,6 +103,7 @@ class MainActivity : AppCompatActivity() {
             ),
             fallbackTarget = findViewById(R.id.workflowProgress),
             onStepChanged = { step ->
+                findViewById<View>(R.id.modelPicker).visibility = if (step == 0) View.VISIBLE else View.GONE
                 processingOverlay.visibility = if (step == 1) View.VISIBLE else View.GONE
                 resultScreen.visibility = if (step >= 2) View.VISIBLE else View.GONE
                 prescriptionCard.visibility = if (step >= 2) View.VISIBLE else originalVisibility[prescriptionCard] ?: View.GONE
@@ -264,6 +267,28 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         Log.i(TAG, "CleaRx build version=${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
         setContentView(R.layout.activity_main)
+        val modelPicker = findViewById<com.google.android.material.button.MaterialButton>(R.id.modelPicker)
+        val modelPreferences = getSharedPreferences("ocr_model", MODE_PRIVATE)
+        selectedRecognitionModel = RecognitionModel.fromSavedId(modelPreferences.getString("model", null))
+        modelPicker.text = getString(R.string.capture_model, selectedRecognitionModel.displayName)
+        modelPicker.contentDescription = "${modelPicker.text}. ${getString(R.string.recognition_model_description)}"
+        modelPicker.setOnClickListener {
+            if (!isCapturing && productTour == null) {
+                val options = RecognitionModel.values()
+                MaterialAlertDialogBuilder(this, R.style.ThemeOverlay_CleaRx_Dialog)
+                    .setTitle(R.string.choose_capture_model)
+                    .setSingleChoiceItems(options.map { it.displayName }.toTypedArray(),
+                        options.indexOf(selectedRecognitionModel)) { dialog, index ->
+                        selectedRecognitionModel = options[index]
+                        modelPreferences.edit().putString("model", selectedRecognitionModel.apiId).apply()
+                        modelPicker.text = getString(R.string.capture_model, selectedRecognitionModel.displayName)
+                        modelPicker.contentDescription = "${modelPicker.text}. ${getString(R.string.recognition_model_description)}"
+                        dialog.dismiss()
+                    }
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .show()
+            }
+        }
         captureUserId = intent.getStringExtra("user_id") ?: TEST_USER_ID
         captureSessionId = intent.getStringExtra("session_id")
         if (captureSessionId == null && captureUserId != null) {
@@ -1067,6 +1092,7 @@ class MainActivity : AppCompatActivity() {
         }
         selectFileButton.setSelectedState(true)
         isCapturing = true
+        findViewById<View>(R.id.modelPicker).isEnabled = false
         validationJob?.cancel()
         focusRetryJob?.cancel()
         laserScanner.stopScanning()
@@ -1097,6 +1123,7 @@ class MainActivity : AppCompatActivity() {
         haptics.triggerHaptic(HapticFeedbackManager.HapticType.SUCCESS)
 
         isCapturing = true
+        findViewById<View>(R.id.modelPicker).isEnabled = false
         validationJob?.cancel()
         focusRetryJob?.cancel()
         captureButton.clearAnimation()
@@ -1136,6 +1163,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private suspend fun sendToBackend(file: File, uploadedFile: Boolean = false) {
+        val captureModel = withContext(Dispatchers.Main) { selectedRecognitionModel.apiId }
         withContext(Dispatchers.Main) {
             processingOverlay.visibility = View.GONE
             terminalController.showTerminal()
@@ -1245,6 +1273,7 @@ class MainActivity : AppCompatActivity() {
 
             val response = processingService.processImage(
                 processingPart, imageIdPart,
+                model = MultipartBody.Part.createFormData("model", captureModel),
             )
 
             if (response.isSuccessful) file.delete()
@@ -1403,6 +1432,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showResult(result: ProcessImageResponse) {
+        findViewById<View>(R.id.modelPicker).visibility = View.GONE
         updateWorkflow(4, "Read and compare results")
         findViewById<View>(R.id.detailsPanel).visibility = View.GONE
         findViewById<TextView>(R.id.detailsToggle).setText(R.string.show_details)
@@ -1474,6 +1504,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showRejectionResult(result: ProcessImageResponse) {
+        findViewById<View>(R.id.modelPicker).visibility = View.GONE
         updateWorkflow(1, "Retake or choose an image")
         findViewById<View>(R.id.detailsPanel).visibility = View.GONE
         findViewById<TextView>(R.id.detailsToggle).setText(R.string.show_details)
@@ -1527,6 +1558,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun resetToCamera() {
         updateWorkflow(1, "Capture or choose an image")
+        findViewById<View>(R.id.modelPicker).apply {
+            isEnabled = true
+            visibility = View.VISIBLE
+        }
         cameraSuppressed = false
         selectFileButton.setSelectedState(false)
         isCapturing          = false

@@ -156,5 +156,6 @@ interface ApiService {
         @Part file: MultipartBody.Part,
         @Part imageId: MultipartBody.Part? = null,
         @Part groundTruth: MultipartBody.Part? = null,
+        @Part model: MultipartBody.Part? = null,
     ): Response<ProcessImageResponse>
 }

@@ -39,4 +39,8 @@
     <string name="save_failed_notice">Reading completed, but saving failed. This result has not been saved. Keep it open and try processing again later.</string>
     <string name="no_medicine_cards">No medicine cards could be created. Open Details to compare the photo and readable text, or retake the photo.</string>
     <string name="how_to_use">How to use</string>
+    <string name="capture_model">Model: %1$s</string>
+    <string name="default_capture_model">Model: CleaRx TrOCR</string>
+    <string name="choose_capture_model">Choose recognition model</string>
+    <string name="recognition_model_description">Choose a recognition model. Both options may process images externally.</string>
 </resources>
