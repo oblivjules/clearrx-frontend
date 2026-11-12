@@ -101,6 +101,7 @@
                 android:layout_marginStart="24dp"
                 android:layout_marginBottom="56dp"
                 android:contentDescription="@string/select_file" />
+
         <TextView
                 android:id="@+id/processingPrivacyNotice"
                 android:layout_width="match_parent"

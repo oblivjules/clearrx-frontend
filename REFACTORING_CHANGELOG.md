@@ -256,3 +256,21 @@ performed. Release network processing still requires a configured HTTPS endpoint
 - Commit: user approved `feat(branding): use official CleaRx splash artwork`.
 - Additional privacy-text edits are intentionally excluded: their no-retention
   claim does not match the unchanged backend storage behavior.
+
+## Post-migration - Crop layout and action controls
+
+- User explicitly approved inclusion of the current crop-layout edits in a
+  separate focused commit. Use a vertical layout with a dedicated toolbar,
+  weighted crop/preview area, quality/privacy text and bottom action controls.
+- Add consistent minimum-size crop buttons, readable foreground colors and
+  separate Edit crop / Upload again strings. Keep the existing quality checks,
+  temporary-file cleanup and variant endpoint behavior.
+- Retain the user's small activity_main.xml spacing edit. Exclude privacy-copy
+  changes from this commit: a no-retention claim is not supported by backend
+  storage behavior and remains only in the user's working tree for review.
+- Verification: all source XML parses and Kotlin string references resolve.
+  The user reports successful Android verification of the current app. The agent
+  did not rerun Android builds or device interaction checks after these edits.
+- Branding commit: `c655476`. User approved commit:
+  `fix(crop): separate image preview and action controls`.
+- No push, merge or deployment performed.

@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.os.Bundle
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
@@ -54,23 +55,16 @@ class CropActivity : AppCompatActivity() {
             return
         }
 
-        val root = FrameLayout(this).apply {
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.BLACK)
         }
         val toolbar = FrameLayout(this).apply {
-            setBackgroundColor(Color.TRANSPARENT)
+            setBackgroundColor(Color.rgb(24, 24, 24))
+            setPadding(dp(16), dp(8), dp(16), dp(8))
         }
-        resetButton = MaterialButton(this).apply {
+        resetButton = cropButton(R.string.reset_crop).apply {
             text = getString(R.string.reset_crop)
-            setTextColor(ContextCompat.getColor(this@CropActivity, R.color.brand_primary))
-            background = null
-            stateListAnimator = null
-            elevation = 0f
-            setPadding(0, 0, 0, 0)
-            insetTop = 0
-            insetBottom = 0
-            minHeight = 0
-            minWidth = 0
             visibility = View.GONE
             setOnClickListener {
                 if (preview.visibility == View.VISIBLE) {
@@ -87,17 +81,7 @@ class CropActivity : AppCompatActivity() {
                 }
             }
         }
-        doneButton = MaterialButton(this).apply {
-            text = getString(R.string.done_crop)
-            setTextColor(ContextCompat.getColor(this@CropActivity, R.color.brand_primary))
-            background = null
-            stateListAnimator = null
-            elevation = 0f
-            setPadding(0, 0, 0, 0)
-            insetTop = 0
-            insetBottom = 0
-            minHeight = 0
-            minWidth = 0
+        doneButton = cropButton(R.string.done_crop, primary = true).apply {
             setOnClickListener { showPreview() }
         }
         toolbar.addView(
@@ -106,7 +90,7 @@ class CropActivity : AppCompatActivity() {
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 dp(48),
                 Gravity.TOP or Gravity.START,
-            ).apply { leftMargin = dp(16) },
+            ),
         )
         toolbar.addView(
             doneButton,
@@ -114,7 +98,7 @@ class CropActivity : AppCompatActivity() {
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 dp(48),
                 Gravity.TOP or Gravity.END,
-            ).apply { rightMargin = dp(16) },
+            ),
         )
 
         cropView = CropSelectionView(this).apply {
@@ -131,7 +115,7 @@ class CropActivity : AppCompatActivity() {
         previewLabel = TextView(this).apply {
             text = getString(R.string.cropped_preview)
             textSize = 14f
-            setTextColor(ContextCompat.getColor(this@CropActivity, R.color.text_secondary))
+            setTextColor(Color.WHITE)
             setPadding(dp(16), dp(12), dp(16), dp(4))
             visibility = View.GONE
         }
@@ -144,21 +128,9 @@ class CropActivity : AppCompatActivity() {
                 FrameLayout.LayoutParams.MATCH_PARENT,
             )
         }
-        sendButton = MaterialButton(this).apply {
+        sendButton = cropButton(R.string.send_image, primary = true).apply {
             text = getString(R.string.send_image)
             visibility = View.GONE
-            setTextColor(Color.WHITE)
-            backgroundTintList = android.content.res.ColorStateList.valueOf(
-                ContextCompat.getColor(this@CropActivity, R.color.brand_primary)
-            )
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                dp(52),
-                Gravity.BOTTOM or Gravity.END,
-            ).apply {
-                rightMargin = dp(16)
-                bottomMargin = dp(16)
-            }
             setOnClickListener { sendCroppedFile() }
         }
         qualityGuidance = TextView(this).apply {
@@ -170,37 +142,22 @@ class CropActivity : AppCompatActivity() {
             accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         }
 
-        root.addView(cropView)
-        root.addView(preview)
-        root.addView(toolbar, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            dp(56),
-            Gravity.TOP,
+        root.addView(toolbar, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
         ))
-        root.addView(previewLabel, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            Gravity.TOP or Gravity.CENTER_HORIZONTAL,
-        ).apply {
-            topMargin = dp(64)
-        })
-        root.addView(sendButton)
-        root.addView(MaterialButton(this).apply {
-            text = "Upload again"
-            setOnClickListener {
-                setResult(Activity.RESULT_CANCELED, Intent().putExtra(EXTRA_UPLOAD_AGAIN, true))
-                sourceFile?.delete()
-                croppedFile?.delete()
-                finish()
-            }
-        }, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            dp(52),
-            Gravity.BOTTOM or Gravity.START,
-        ).apply {
-            leftMargin = dp(16)
-            bottomMargin = dp(16)
-        })
+        root.addView(previewLabel)
+        val imageContainer = FrameLayout(this).apply {
+            addView(cropView)
+            addView(preview)
+        }
+        root.addView(imageContainer, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f,
+        ))
+        root.addView(qualityGuidance, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+        ))
         root.addView(TextView(this).apply {
             text = getString(R.string.processing_privacy_short)
             textSize = 12f
@@ -216,13 +173,25 @@ class CropActivity : AppCompatActivity() {
                     .setPositiveButton(android.R.string.ok, null)
                     .show()
             }
-        }, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply { bottomMargin = dp(80) })
-        root.addView(qualityGuidance, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            Gravity.BOTTOM,
-        ).apply { bottomMargin = dp(136) })
+        })
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(Color.rgb(24, 24, 24))
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+        }
+        actions.addView(cropButton(R.string.upload_again).apply {
+            setOnClickListener {
+                setResult(Activity.RESULT_CANCELED, Intent().putExtra(EXTRA_UPLOAD_AGAIN, true))
+                sourceFile?.delete()
+                croppedFile?.delete()
+                finish()
+            }
+        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        actions.addView(sendButton, LinearLayout.LayoutParams(
+            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f,
+        ).apply { marginStart = dp(12) })
+        root.addView(actions)
         setContentView(root)
         cropView.post { scheduleQualityCheck() }
         showCropInstruction()
@@ -249,7 +218,7 @@ class CropActivity : AppCompatActivity() {
         preview.visibility = View.VISIBLE
         preview.setImageBitmap(cropped)
         sendButton.visibility = View.VISIBLE
-        resetButton.text = "Edit crop"
+        resetButton.text = getString(R.string.edit_crop)
         resetButton.visibility = View.VISIBLE
         sendButton.isEnabled = qualityPassed
     }
@@ -325,6 +294,30 @@ class CropActivity : AppCompatActivity() {
             croppedFile?.delete()
         }
         super.onDestroy()
+    }
+
+    private fun cropButton(label: Int, primary: Boolean = false): MaterialButton {
+        return MaterialButton(this).apply {
+            text = getString(label)
+            setTextColor(Color.WHITE)
+            backgroundTintList = android.content.res.ColorStateList(
+                arrayOf(intArrayOf(-android.R.attr.state_enabled), intArrayOf()),
+                intArrayOf(Color.rgb(80, 80, 80),
+                    if (primary) ContextCompat.getColor(this@CropActivity, R.color.brand_primary)
+                    else Color.rgb(24, 24, 24)),
+            )
+            strokeWidth = if (primary) 0 else dp(1)
+            strokeColor = android.content.res.ColorStateList.valueOf(Color.rgb(189, 189, 189))
+            cornerRadius = dp(12)
+            minHeight = dp(48)
+            minimumHeight = dp(48)
+            minWidth = dp(96)
+            insetTop = 0
+            insetBottom = 0
+            isAllCaps = false
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            setPadding(dp(20), dp(12), dp(20), dp(12))
+        }
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
