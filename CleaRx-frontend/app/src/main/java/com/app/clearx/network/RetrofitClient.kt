@@ -1,5 +1,6 @@
 package com.app.clearx.network
 
+import com.app.clearx.BuildConfig
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -9,7 +10,8 @@ import java.util.concurrent.TimeUnit
 object RetrofitClient {
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
-        level = HttpLoggingInterceptor.Level.BASIC
+        level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC
+            else HttpLoggingInterceptor.Level.NONE
     }
 
     private val validationClient = OkHttpClient.Builder()

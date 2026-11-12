@@ -111,4 +111,54 @@ backend migration branch; B8 is `dcbe383`. No push or merge was performed.
 - Follow-up: the user reports the requested F4 Android Studio verification
   succeeded and approves the commit. This is user-provided verification; the
   agent did not execute the Android build or device interaction checks.
+- Commit: `a00dda7` - `feat(onboarding): guide capture and result review`.
+
+## F5 - Android transport, logging and backup configuration
+
+- Priority #2 privacy/security support: disable release cleartext traffic and
+  migrate separate debug network resources. Tighten the refactored debug policy
+  to the active development host, emulator host and loopback; other HTTP is denied.
+- Disable backup and explicitly exclude app-data domains from legacy backup,
+  cloud backup and device transfer. Do not claim existing backups were erased.
+- Disable Retrofit HTTP logging outside debug builds; preserve BASIC-only debug
+  logging and the F1 client cache/timeout behavior.
+- Document the current HTTP development URL: release network processing remains
+  unavailable until a real HTTPS endpoint is configured. No endpoint or certificate
+  is invented, and storage/provider retention limitations remain documented.
+- Verification: all 35 source XML files parse. Static checks confirm release
+  has no HTTP exceptions, debug exceptions include the active backend host,
+  all nine app-data domains are excluded from all three backup/transfer rule
+  sets, and internal activities remain private. Whitespace checks pass.
+  These are configuration checks, not Android manifest/resource merge or device
+  verification. Full debug/release builds, Android unit tests, transport enforcement
+  and backup/restore checks remain pending. Gradle execution was previously
+  declined and was not requested again. Existing pure Kotlin logic is unchanged.
+- Follow-up: the user reports the requested debug/release builds and Android
+  unit tests succeeded and approves proceeding. This is user-provided build/test
+  verification; device transport and backup/restore behavior remain unverified
+  by the agent.
 - Commit: approved; reference recorded in the next entry.
+
+### F5 operational notes
+
+- The newly prepared `CleaRx-frontend/SECURITY.md` disappeared before staging.
+  Its removal was preserved; the material limitations are recorded here instead.
+- Release uses system-trusted certificates and rejects HTTP. Debug permits HTTP
+  only to `192.168.1.3`, `10.0.2.2`, `localhost` and `127.0.0.1`. If the LAN server
+  changes, update MainActivity.BASE_URL and the debug-only domain list together.
+  Do not use personal prescription images over unencrypted local debug HTTP.
+- The development endpoint is still HTTP. Configure a real HTTPS endpoint and
+  test capture/upload before using a release build; this migration does not
+  provision a production backend or certificate.
+- Backup exclusions include preferences, so onboarding/text-size settings will
+  not transfer. No OEM/device backup behavior has been verified. The settings
+  do not erase existing backups or local/backend records. Cache cleanup remains
+  best effort; no secure-erasure, masking, provider retention/training guarantee
+  or backend retention deadline is implemented or claimed.
+- Inspect debug/release merged manifests and packaged network-security resources.
+  On a disposable test device, verify debug local access, rejection of unlisted
+  HTTP, release HTTP rejection, HTTPS connectivity and backup/transfer exclusions.
+  Do not bypass certificate validation. Retrofit uses BASIC debug logging and
+  NONE release logging; this is not a claim that all app/backend logs are audited.
+- References: [Android network security configuration](https://developer.android.com/privacy-and-security/security-config)
+  and [Android backup rules](https://developer.android.com/identity/data/autobackup).
