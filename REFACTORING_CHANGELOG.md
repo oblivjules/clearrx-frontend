@@ -31,4 +31,33 @@ backend migration branch; B8 is `dcbe383`. No push or merge was performed.
   This is user-provided build verification; the agent did not rerun the full
   Android Gradle build/test tasks. The five JVM tests above passed independently.
   Full Android unit-test execution and camera device checks remain unverified.
-- Whitespace check: passed. Commit: pending explicit approval.
+- Whitespace check: passed. Commit: `61eeb51` - `fix(camera): stabilize preview processing and API clients`.
+
+## F2 - File selection, cropping and upload
+
+- Priority #3: migrated the file picker, crop/preview screen, upload loader,
+  upload/quality API contracts and private crop activity registration. Retained
+  the existing result UI, onboarding and default recognition selection for later
+  commits. No new application dependencies were required.
+- Submit the same cropped JPEG bytes for camera registration, quality validation
+  and OCR, compatible with the backend checksum policy. Stop on failed camera
+  quality or registration. Uploads use the shared server acceptance policy.
+- Added bounded copying and a 24-megapixel header check before image allocation.
+  Normalize selected JPEG/PNG/WebP inputs to JPEG, including EXIF orientation,
+  so declared MIME matches the submitted bytes. Device originals are unchanged.
+- Retain source files across crop activity recreation; delete app-cache attempt
+  copies on completion/failure and crop cancellation. Crop selection may reset
+  after rotation; no crop-state restoration beyond temporary file ownership is
+  claimed. The gallery alternative does not require camera permission.
+- Priority #2 privacy dependency: added a non-blocking, accessible notice on both
+  capture and crop screens before submission. It explains external processing
+  and actual encryption/retention limitations without deletion/masking promises.
+  Moved this notice into F2 so the new input path does not precede disclosure.
+- Verification: 12 cached Kotlin/JVM tests passed; manifest/resource XML parsed
+  and string references/whitespace checks passed. These checks do not compile
+  Android-dependent code. Android Gradle build/test permission was declined; no
+  full F2 Android build or device test was executed by the agent.
+  Follow-up: the user reports that the requested F2 Android Studio build and
+  unit-test run succeeded. This is user-provided verification; device interaction
+  checks have not been independently verified by the agent.
+- Commit: approved by the user; commit reference recorded in the next entry.

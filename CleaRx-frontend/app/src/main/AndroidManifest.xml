@@ -42,6 +42,10 @@
                 android:theme="@style/Theme.CleaRx"
                 android:windowSoftInputMode="stateHidden" />
 
+        <activity
+                android:name=".CropActivity"
+                android:exported="false"
+                android:theme="@style/Theme.CleaRx" />
     </application>
 
 </manifest>

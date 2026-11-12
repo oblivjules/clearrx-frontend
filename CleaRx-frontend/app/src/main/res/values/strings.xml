@@ -1,3 +1,17 @@
 <resources>
     <string name="app_name">CleaRx</string>
+    <string name="select_file">Choose image</string>
+    <string name="image_selected">Image selected</string>
+    <string name="crop_instruction">Please crop the image to include only the prescription (Rx) or medication section before submitting.</string>
+    <string name="crop_instruction_title">Before you crop</string>
+    <string name="crop_instruction_ok">Okay</string>
+    <string name="cancel_crop">Cancel</string>
+    <string name="confirm_crop">Confirm Crop</string>
+    <string name="send_image">Send</string>
+    <string name="cropped_preview">Cropped image preview</string>
+    <string name="done_crop">Done</string>
+    <string name="reset_crop">Reset</string>
+    <string name="processing_privacy_short">Images may be processed by an external AI service. Tap for privacy details.</string>
+    <string name="processing_privacy_title">How your prescription is processed</string>
+    <string name="processing_privacy_body">CleaRx may send your prescription image or extracted information to an external AI service to read handwriting and prepare results. Images can contain personal or health information. Share only images you are allowed to use.\n\nExternal processing uses an encrypted provider connection. This does not guarantee that a local connection from your phone to the backend is encrypted. Images and records may remain stored after this session. Automatic deletion and masking are not implemented, and provider retention or training guarantees have not been verified.</string>
 </resources>

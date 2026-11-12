@@ -72,7 +72,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="bottom|center_horizontal"
-                android:layout_marginBottom="40dp">
+                android:layout_marginBottom="64dp">
 
             <View
                     android:layout_width="84dp"
@@ -89,6 +89,27 @@
                     android:elevation="4dp"
                     android:src="@drawable/ic_camera_capture" />
         </FrameLayout>
+        <com.app.clearx.UploadLoaderView
+                android:id="@+id/selectFileButton"
+                android:layout_width="52dp"
+                android:layout_height="52dp"
+                android:layout_gravity="bottom|start"
+                android:layout_marginStart="24dp"
+                android:layout_marginBottom="56dp"
+                android:contentDescription="@string/select_file" />
+        <TextView
+                android:id="@+id/processingPrivacyNotice"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_gravity="bottom"
+                android:background="#DD202020"
+                android:gravity="center"
+                android:paddingHorizontal="12dp"
+                android:text="@string/processing_privacy_short"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp"
+                android:clickable="true"
+                android:focusable="true" />
     </FrameLayout>
 
     <!-- LAYER 2: PROCESSING OVERLAY -->

@@ -20,6 +20,7 @@ import android.view.animation.Animation
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.*
 import androidx.camera.extensions.ExtensionMode
@@ -47,6 +48,7 @@ import android.graphics.RectF
 import android.view.Surface
 import androidx.exifinterface.media.ExifInterface
 import java.io.File
+import java.io.FileOutputStream
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -59,6 +61,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var laserScanner: LaserScannerView
     private lateinit var guidanceText: TextView
     private lateinit var captureButton: ImageButton
+    private lateinit var selectFileButton: UploadLoaderView
     private lateinit var flashlightButton: ImageButton
     private lateinit var focusRipple: View
     private lateinit var cameraContainer: FrameLayout
@@ -105,6 +108,7 @@ class MainActivity : AppCompatActivity() {
     private var validationJob: Job? = null
     private var focusRetryJob: Job? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var cameraSuppressed = false
     private var cameraStartInProgress = false
     private var isActivityResumed = false
     private var permissionRequestInFlight = false
@@ -151,6 +155,28 @@ class MainActivity : AppCompatActivity() {
             if (granted) startCamera() else showPermissionDeniedDialog()
         }
 
+    private val filePickerLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) handleSelectedFile(uri)
+            else {
+                cameraSuppressed = false
+                resumeLiveCameraIfNeeded()
+            }
+        }
+
+    private val cropLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode == RESULT_OK) {
+                result.data?.getStringExtra(CropActivity.EXTRA_CROPPED)
+                    ?.let { startCroppedProcessing(File(it)) }
+            } else if (result.data?.getBooleanExtra(CropActivity.EXTRA_UPLOAD_AGAIN, false) == true) {
+                chooseImage()
+            } else {
+                cameraSuppressed = false
+                resumeLiveCameraIfNeeded()
+            }
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.i(TAG, "CleaRx build version=${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
@@ -190,6 +216,8 @@ class MainActivity : AppCompatActivity() {
             cursorText   = terminalCursor
         )
         setupListeners()
+        selectFileButton.setOnClickListener { chooseImage() }
+        findViewById<View>(R.id.processingPrivacyNotice).setOnClickListener { showProcessingPrivacy() }
         cameraExecutor = Executors.newSingleThreadExecutor()
         haptics = HapticFeedbackManager(this)
         // Camera permission/startup runs when the activity resumes.
@@ -237,6 +265,7 @@ class MainActivity : AppCompatActivity() {
         framingOverlay     = findViewById(R.id.framingOverlay)
         guidanceText       = findViewById(R.id.guidanceText)
         captureButton      = findViewById(R.id.captureButton)
+        selectFileButton   = findViewById(R.id.selectFileButton)
         flashlightButton   = findViewById(R.id.flashlightButton)
         focusRipple        = findViewById(R.id.focusRipple)
         cameraContainer    = findViewById(R.id.cameraContainer)
@@ -349,7 +378,7 @@ class MainActivity : AppCompatActivity() {
             PackageManager.PERMISSION_GRANTED
 
     private fun isLiveCameraPage(): Boolean =
-        !isFinishing && !isDestroyed && isActivityResumed &&
+        !isFinishing && !isDestroyed && isActivityResumed && !cameraSuppressed &&
             ::cameraContainer.isInitialized && cameraContainer.visibility == View.VISIBLE &&
             ::resultScreen.isInitialized && resultScreen.visibility != View.VISIBLE && !isCapturing
 
@@ -830,6 +859,116 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private fun handleSelectedFile(uri: Uri) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            var source: File? = null
+            try {
+                val type = contentResolver.getType(uri)?.lowercase()
+                require(type in setOf("image/jpeg", "image/png", "image/webp")) {
+                    "Choose a JPEG, PNG, or WebP image."
+                }
+                val selected = File.createTempFile("selected_", ".jpg", cacheDir)
+                source = selected
+                contentResolver.openInputStream(uri).use { input ->
+                    requireNotNull(input) { "Unable to open the selected image" }
+                    FileOutputStream(selected).use { output -> ImageInputPolicy.copyWithinLimit(input, output) }
+                }
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeFile(selected.absolutePath, bounds)
+                ImageInputPolicy.validateDimensions(bounds.outWidth, bounds.outHeight)
+                normalizeSelectedImage(selected)
+                require(selected.length() <= ImageInputPolicy.MAX_BYTES) { "The image must be 10 MB or smaller." }
+                withContext(Dispatchers.Main) { showCropDialog(selected) }
+                source = null // CropActivity now owns cleanup.
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (exception: Exception) {
+                Log.w(TAG, "Selected image preparation failed", exception)
+                withContext(Dispatchers.Main) {
+                    cameraSuppressed = false
+                    resumeLiveCameraIfNeeded()
+                    showFileError("We could not open that image. Choose a JPEG, PNG, or WebP image under 10 MB and 24 megapixels.")
+                }
+            } finally {
+                source?.delete()
+            }
+        }
+    }
+
+    private fun normalizeSelectedImage(file: File) {
+        val bitmaps = mutableSetOf<Bitmap>()
+        try {
+            val bitmap = checkNotNull(BitmapFactory.decodeFile(file.absolutePath)).also { bitmaps.add(it) }
+            val orientation = ExifInterface(file).getAttributeInt(
+                ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+            val matrix = Matrix().apply {
+                when (orientation) {
+                    ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> setScale(-1f, 1f)
+                    ExifInterface.ORIENTATION_ROTATE_180 -> setRotate(180f)
+                    ExifInterface.ORIENTATION_FLIP_VERTICAL -> setScale(1f, -1f)
+                    ExifInterface.ORIENTATION_TRANSPOSE -> { setRotate(90f); postScale(-1f, 1f) }
+                    ExifInterface.ORIENTATION_ROTATE_90 -> setRotate(90f)
+                    ExifInterface.ORIENTATION_TRANSVERSE -> { setRotate(270f); postScale(-1f, 1f) }
+                    ExifInterface.ORIENTATION_ROTATE_270 -> setRotate(270f)
+                }
+            }
+            val normalized = if (matrix.isIdentity) bitmap else Bitmap.createBitmap(
+                bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true).also { bitmaps.add(it) }
+            file.outputStream().use { check(normalized.compress(Bitmap.CompressFormat.JPEG, 95, it)) }
+        } finally {
+            bitmaps.forEach { it.recycle() }
+        }
+    }
+
+    private fun chooseImage() {
+        if (isCapturing) return
+        cameraSuppressed = true
+        releaseCamera()
+        filePickerLauncher.launch(arrayOf("image/jpeg", "image/png", "image/webp"))
+    }
+
+    private fun showCropDialog(sourceFile: File) {
+        cameraSuppressed = true
+        releaseCamera()
+        cropLauncher.launch(
+            android.content.Intent(this, CropActivity::class.java)
+                .putExtra(CropActivity.EXTRA_SOURCE, sourceFile.absolutePath)
+                .putExtra(CropActivity.EXTRA_BASE_URL, BASE_URL)
+        )
+    }
+
+    private fun showProcessingPrivacy() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.processing_privacy_title)
+            .setMessage(R.string.processing_privacy_body)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
+    private fun startCroppedProcessing(croppedFile: File) {
+        if (!croppedFile.isFile) {
+            showFileError("The cropped image is no longer available.")
+            return
+        }
+        selectFileButton.setSelectedState(true)
+        isCapturing = true
+        validationJob?.cancel()
+        focusRetryJob?.cancel()
+        laserScanner.stopScanning()
+        cameraContainer.visibility = View.GONE
+        processingOverlay.visibility = View.VISIBLE
+        processingStatusText.text = UIStrings.ENHANCING
+        lifecycleScope.launch(Dispatchers.IO) {
+            sendToBackend(croppedFile, uploadedFile = true)
+        }
+    }
+
+    private fun showFileError(message: String) {
+        runOnUiThread {
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun captureAndProcess() {
         if (isCapturing) return
 
@@ -881,69 +1020,126 @@ class MainActivity : AppCompatActivity() {
         }, 250)
     }
 
-    private suspend fun sendToBackend(file: File) {
+    private suspend fun sendToBackend(file: File, uploadedFile: Boolean = false) {
         withContext(Dispatchers.Main) {
             processingOverlay.visibility = View.GONE
             terminalController.showTerminal()
             terminalController.updateStatus(TrOCRStage.INIT)
         }
+        var processingFile: File? = null
         try {
             if (captureSessionId == null) {
                 captureSessionId = sessionCreationJob?.await()
             }
-            val croppedFile = cropToGuideFrame(file) ?: file
-
+            check(!captureSessionId.isNullOrBlank()) {
+                "Could not register capture session. Reopen the camera and check the server connection and user account."
+            }
+            val croppedFile = if (uploadedFile) {
+                file
+            } else {
+                cropToGuideFrame(file)
+                    ?: throw IllegalStateException("Unable to crop capture to the visible document border")
+            }
+            processingFile = croppedFile
             withContext(Dispatchers.Main) {
                 terminalController.updateStatus(TrOCRStage.PREPROCESS)
             }
 
             val originalPart = MultipartBody.Part.createFormData(
-                "file", file.name,
-                file.asRequestBody("image/jpeg".toMediaTypeOrNull()),
-            )
-            val processingPart = MultipartBody.Part.createFormData(
                 "file", croppedFile.name,
-                croppedFile.asRequestBody("image/jpeg".toMediaTypeOrNull()),
+                croppedFile.asRequestBody(
+                    when (croppedFile.extension.lowercase()) {
+                        "png" -> "image/png"
+                        "webp" -> "image/webp"
+                        else -> "image/jpeg"
+                    }.toMediaTypeOrNull()
+                ),
             )
-
             val processingService = RetrofitClient.getProcessingService(BASE_URL)
-            captureAttemptNumber++
             val imageIdPart = captureSessionId?.let { sessionId ->
-                val imageResponse = processingService.captureImage(
-                    originalPart,
-                    MultipartBody.Part.createFormData("session_id", sessionId),
-                    MultipartBody.Part.createFormData(
-                        "capture_attempt_number", captureAttemptNumber.toString(),
-                    ),
-                )
-                val imageBody = imageResponse.body()
-                if (imageResponse.isSuccessful && imageBody?.status == "created" &&
-                    imageBody.image_id != null
-                ) {
-                    MultipartBody.Part.createFormData("image_id", imageBody.image_id)
-                } else null
+                val imageId = if (uploadedFile) {
+                    val response = processingService.uploadFile(
+                        originalPart,
+                        MultipartBody.Part.createFormData("session_id", sessionId),
+                    )
+                    if (response.code() == 422) {
+                        val detail = org.json.JSONObject(response.errorBody()?.string().orEmpty())
+                            .optJSONObject("detail")
+                        val guidance = detail?.optString("instruction")
+                            ?.takeIf { it.isNotBlank() }
+                            ?: "Image quality check failed. Please upload again with a clearer photo."
+                        withContext(Dispatchers.Main) {
+                            terminalController.forceHide()
+                            showError(guidance, uploadedFile = true)
+                        }
+                        return
+                    }
+                    check(response.isSuccessful) {
+                        "Image registration failed: HTTP ${response.code()} ${response.errorBody()?.string()}"
+                    }
+                    response.body()?.takeIf { it.status == "created" }?.image_id
+                } else {
+                    captureAttemptNumber++
+                    val response = processingService.captureImage(
+                        originalPart,
+                        MultipartBody.Part.createFormData("session_id", sessionId),
+                        MultipartBody.Part.createFormData(
+                            "capture_attempt_number", captureAttemptNumber.toString(),
+                        ),
+                    )
+                    check(response.isSuccessful) {
+                        "Image registration failed: HTTP ${response.code()} ${response.errorBody()?.string()}"
+                    }
+                    response.body()?.takeIf { it.status == "created" }?.image_id
+                }
+                imageId?.let { MultipartBody.Part.createFormData("image_id", it) }
             }
 
-            processingService.validateCapture(originalPart, imageIdPart)
+            checkNotNull(imageIdPart) { "Image registration returned no image ID. Please retry." }
+            // Uploads are validated by upload-file before it returns an image ID.
+            if (!uploadedFile) {
+                val validationResponse = processingService.validateCapture(originalPart, imageIdPart)
+                check(validationResponse.isSuccessful) {
+                    "Capture validation failed: HTTP ${validationResponse.code()} ${validationResponse.errorBody()?.string()}"
+                }
+                val validation = validationResponse.body()
+                if (validation?.is_usable != true) {
+                    withContext(Dispatchers.Main) {
+                        showError(validation?.instruction ?: "The photo could not pass quality checks.")
+                    }
+                    return
+                }
+            }
+
+            val processingPart = MultipartBody.Part.createFormData(
+                "file", croppedFile.name,
+                croppedFile.asRequestBody(
+                    when (croppedFile.extension.lowercase()) {
+                        "png" -> "image/png"
+                        "webp" -> "image/webp"
+                        else -> "image/jpeg"
+                    }.toMediaTypeOrNull()
+                ),
+            )
 
             withContext(Dispatchers.Main) {
                 terminalController.updateStatus(TrOCRStage.FEATURE_EXTRACTION)
             }
 
-            val response = processingService.processImage(processingPart, imageIdPart)
+            val response = processingService.processImage(
+                processingPart, imageIdPart,
+            )
 
-            file.delete()
-            if (croppedFile != file) croppedFile.delete()
+            if (response.isSuccessful) file.delete()
+            if (response.isSuccessful && croppedFile != file) croppedFile.delete()
 
             withContext(Dispatchers.Main) {
                 terminalController.updateStatus(TrOCRStage.DECODING)
             }
-            delay(1200)
 
             withContext(Dispatchers.Main) {
                 terminalController.updateStatus(TrOCRStage.POSTPROCESS)
             }
-            delay(1200)
 
             withContext(Dispatchers.Main) {
                 terminalController.onHidden = {
@@ -953,10 +1149,10 @@ class MainActivity : AppCompatActivity() {
                             "success"          -> showResult(body)
                             "rejected",
                             "no_text_detected" -> showRejectionResult(body)
-                            else               -> showError(UIStrings.ERROR_EMPTY)
+                            else               -> showError(UIStrings.ERROR_EMPTY, uploadedFile)
                         }
                     } else {
-                        showError("Server error ${response.code()} — check connection.")
+                        showError("We could not read this photo right now. Check your connection and try again.", uploadedFile)
                     }
                 }
                 terminalController.updateStatus(TrOCRStage.DONE)
@@ -967,8 +1163,11 @@ class MainActivity : AppCompatActivity() {
             Log.e(TAG, "Backend error", e)
             withContext(Dispatchers.Main) {
                 terminalController.forceHide()
-                showError("${UIStrings.ERROR_NETWORK} (${e.message})")
+                showError(UIStrings.ERROR_NETWORK, uploadedFile)
             }
+        } finally {
+            file.delete()
+            processingFile?.takeIf { it != file }?.delete()
         }
     }
 
@@ -1021,18 +1220,27 @@ class MainActivity : AppCompatActivity() {
             val viewH = previewView.height.toFloat()
             if (viewW <= 0f || viewH <= 0f) return null
 
+            val frame = framingOverlay.getAbsoluteFrameRect()
+            if (frame.isEmpty || frame.left < 0f || frame.top < 0f ||
+                frame.right > viewW || frame.bottom > viewH
+            ) {
+                Log.w(TAG, "Visible frame is outside preview bounds: frame=$frame view=${viewW}x$viewH")
+                return null
+            }
+
             val scaleToFill = maxOf(viewW / jpegW, viewH / jpegH)
             val scaledJpegW = jpegW * scaleToFill
             val scaledJpegH = jpegH * scaleToFill
             val offsetX = (scaledJpegW - viewW) / 2f
             val offsetY = (scaledJpegH - viewH) / 2f
 
-            val normFrame: RectF = framingOverlay.getFrameRectNormalized()
-
-            val left   = ((normFrame.left   * viewW + offsetX) / scaleToFill).toInt()
-            val top    = ((normFrame.top    * viewH + offsetY) / scaleToFill).toInt()
-            val right  = ((normFrame.right  * viewW + offsetX) / scaleToFill).toInt()
-            val bottom = ((normFrame.bottom * viewH + offsetY) / scaleToFill).toInt()
+            // PreviewView.ScaleType.FILL_CENTER scales the oriented JPEG until it
+            // fills the view, then clips the centered excess. Reverse that exact
+            // transform to map the visible overlay border into JPEG coordinates.
+            val left = kotlin.math.floor((frame.left + offsetX) / scaleToFill).toInt()
+            val top = kotlin.math.floor((frame.top + offsetY) / scaleToFill).toInt()
+            val right = kotlin.math.ceil((frame.right + offsetX) / scaleToFill).toInt()
+            val bottom = kotlin.math.ceil((frame.bottom + offsetY) / scaleToFill).toInt()
 
             val cropRect = Rect(
                 left.coerceIn(0, jpegW),
@@ -1041,7 +1249,9 @@ class MainActivity : AppCompatActivity() {
                 bottom.coerceIn(0, jpegH),
             )
 
-            if (cropRect.width() < 64 || cropRect.height() < 64) {
+            if (cropRect.width() < 64 || cropRect.height() < 64 ||
+                cropRect.left >= cropRect.right || cropRect.top >= cropRect.bottom
+            ) {
                 Log.w(TAG, "Crop rect too small: $cropRect — skipping crop")
                 return null
             }
@@ -1169,12 +1379,24 @@ class MainActivity : AppCompatActivity() {
         retakeButton.requestFocus()
     }
 
-    private fun showError(message: String) {
-        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-        resetToCamera()
+    private fun showError(message: String, uploadedFile: Boolean = false) {
+        terminalController.forceHide()
+        processingOverlay.visibility = View.GONE
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Could not read the prescription")
+            .setMessage(message)
+            .setPositiveButton(if (uploadedFile) "Upload again" else "Retake") { _, _ ->
+                resetToCamera()
+                if (uploadedFile) chooseImage()
+            }
+
+            .setOnCancelListener { resetToCamera() }
+            .show()
     }
 
     private fun resetToCamera() {
+        cameraSuppressed = false
+        selectFileButton.setSelectedState(false)
         isCapturing          = false
         autoCaptureArmed     = false
         goodStateStartMs     = 0L
@@ -1208,7 +1430,7 @@ class MainActivity : AppCompatActivity() {
                     ).apply { data = Uri.parse("package:$packageName") }
                 )
             }
-            .setNegativeButton(UIStrings.CANCEL) { _, _ -> finish() }
+            .setNegativeButton(R.string.select_file) { _, _ -> chooseImage() }
             .show()
     }
 

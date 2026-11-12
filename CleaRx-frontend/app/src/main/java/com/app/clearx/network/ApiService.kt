@@ -49,6 +49,14 @@ data class CaptureSessionResponse(
     val reason: String? = null,
 )
 
+data class FileUploadResponse(
+    val status: String = "error",
+    val image_id: String? = null,
+    val attempt_number: Int = 0,
+    val content_type: String? = null,
+    val size_bytes: Long = 0,
+)
+
 data class ParsedPrescription(
     val brand_name: String? = null,
     val drug_name: String? = null,
@@ -105,6 +113,20 @@ data class ProcessImageResponse(
 )
 
 interface ApiService {
+    @Multipart
+    @POST("validate-upload")
+    suspend fun validateUpload(
+        @Part file: MultipartBody.Part,
+    ): Response<ValidateCaptureResponse>
+
+    @Multipart
+    @POST("upload-file")
+    suspend fun uploadFile(
+        @Part file: MultipartBody.Part,
+        @Part sessionId: MultipartBody.Part,
+    ): Response<FileUploadResponse>
+
+
 
     @Multipart
     @POST("capture-session")

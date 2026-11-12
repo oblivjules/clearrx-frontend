@@ -1,0 +1,339 @@
+package com.app.clearx
+
+import android.app.Activity
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Color
+import android.os.Bundle
+import android.view.Gravity
+import android.view.View
+import android.widget.FrameLayout
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import com.app.clearx.network.RetrofitClient
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.ByteArrayOutputStream
+import java.io.File
+
+class CropActivity : AppCompatActivity() {
+    private lateinit var cropView: CropSelectionView
+    private lateinit var resetButton: MaterialButton
+    private lateinit var doneButton: MaterialButton
+    private lateinit var preview: ImageView
+    private lateinit var previewLabel: TextView
+    private lateinit var sendButton: MaterialButton
+    private lateinit var qualityGuidance: TextView
+    private var qualityJob: Job? = null
+    private var qualityPassed = false
+    private var sourceFile: File? = null
+    private var croppedFile: File? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        sourceFile = intent.getStringExtra(EXTRA_SOURCE)?.let(::File)
+        croppedFile = savedInstanceState?.getString("cropped_file")?.let(::File)
+        val sourceBitmap = sourceFile?.let { BitmapFactory.decodeFile(it.absolutePath) }
+        if (sourceBitmap == null) {
+            finish()
+            return
+        }
+
+        val root = FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
+        }
+        val toolbar = FrameLayout(this).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+        }
+        resetButton = MaterialButton(this).apply {
+            text = getString(R.string.reset_crop)
+            setTextColor(ContextCompat.getColor(this@CropActivity, R.color.brand_primary))
+            background = null
+            stateListAnimator = null
+            elevation = 0f
+            setPadding(0, 0, 0, 0)
+            insetTop = 0
+            insetBottom = 0
+            minHeight = 0
+            minWidth = 0
+            visibility = View.GONE
+            setOnClickListener {
+                if (preview.visibility == View.VISIBLE) {
+                    preview.visibility = View.GONE
+                    previewLabel.visibility = View.GONE
+                    sendButton.visibility = View.GONE
+                    cropView.visibility = View.VISIBLE
+                    doneButton.visibility = View.VISIBLE
+                    text = getString(R.string.reset_crop)
+                    scheduleQualityCheck()
+                } else {
+                    cropView.resetCrop()
+                    visibility = View.GONE
+                }
+            }
+        }
+        doneButton = MaterialButton(this).apply {
+            text = getString(R.string.done_crop)
+            setTextColor(ContextCompat.getColor(this@CropActivity, R.color.brand_primary))
+            background = null
+            stateListAnimator = null
+            elevation = 0f
+            setPadding(0, 0, 0, 0)
+            insetTop = 0
+            insetBottom = 0
+            minHeight = 0
+            minWidth = 0
+            setOnClickListener { showPreview() }
+        }
+        toolbar.addView(
+            resetButton,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                dp(48),
+                Gravity.TOP or Gravity.START,
+            ).apply { leftMargin = dp(16) },
+        )
+        toolbar.addView(
+            doneButton,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                dp(48),
+                Gravity.TOP or Gravity.END,
+            ).apply { rightMargin = dp(16) },
+        )
+
+        cropView = CropSelectionView(this).apply {
+            setBitmap(sourceBitmap)
+            setOnCropChangedListener {
+                resetButton.visibility = View.VISIBLE
+                scheduleQualityCheck()
+            }
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            )
+        }
+        previewLabel = TextView(this).apply {
+            text = getString(R.string.cropped_preview)
+            textSize = 14f
+            setTextColor(ContextCompat.getColor(this@CropActivity, R.color.text_secondary))
+            setPadding(dp(16), dp(12), dp(16), dp(4))
+            visibility = View.GONE
+        }
+        preview = ImageView(this).apply {
+            contentDescription = getString(R.string.cropped_preview)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            visibility = View.GONE
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            )
+        }
+        sendButton = MaterialButton(this).apply {
+            text = getString(R.string.send_image)
+            visibility = View.GONE
+            setTextColor(Color.WHITE)
+            backgroundTintList = android.content.res.ColorStateList.valueOf(
+                ContextCompat.getColor(this@CropActivity, R.color.brand_primary)
+            )
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                dp(52),
+                Gravity.BOTTOM or Gravity.END,
+            ).apply {
+                rightMargin = dp(16)
+                bottomMargin = dp(16)
+            }
+            setOnClickListener { sendCroppedFile() }
+        }
+        qualityGuidance = TextView(this).apply {
+            text = "Checking image quality…"
+            textSize = 15f
+            setTextColor(Color.WHITE)
+            setBackgroundColor(0xDD202020.toInt())
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+        }
+
+        root.addView(cropView)
+        root.addView(preview)
+        root.addView(toolbar, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            dp(56),
+            Gravity.TOP,
+        ))
+        root.addView(previewLabel, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.TOP or Gravity.CENTER_HORIZONTAL,
+        ).apply {
+            topMargin = dp(64)
+        })
+        root.addView(sendButton)
+        root.addView(MaterialButton(this).apply {
+            text = "Upload again"
+            setOnClickListener {
+                setResult(Activity.RESULT_CANCELED, Intent().putExtra(EXTRA_UPLOAD_AGAIN, true))
+                sourceFile?.delete()
+                croppedFile?.delete()
+                finish()
+            }
+        }, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            dp(52),
+            Gravity.BOTTOM or Gravity.START,
+        ).apply {
+            leftMargin = dp(16)
+            bottomMargin = dp(16)
+        })
+        root.addView(TextView(this).apply {
+            text = getString(R.string.processing_privacy_short)
+            textSize = 12f
+            setTextColor(Color.WHITE)
+            setBackgroundColor(0xDD202020.toInt())
+            setPadding(dp(16), dp(8), dp(16), dp(8))
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                MaterialAlertDialogBuilder(this@CropActivity)
+                    .setTitle(R.string.processing_privacy_title)
+                    .setMessage(R.string.processing_privacy_body)
+                    .setPositiveButton(android.R.string.ok, null)
+                    .show()
+            }
+        }, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply { bottomMargin = dp(80) })
+        root.addView(qualityGuidance, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.BOTTOM,
+        ).apply { bottomMargin = dp(136) })
+        setContentView(root)
+        cropView.post { scheduleQualityCheck() }
+        showCropInstruction()
+    }
+
+    private fun showCropInstruction() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.crop_instruction_title)
+            .setMessage(R.string.crop_instruction)
+            .setPositiveButton(R.string.crop_instruction_ok, null)
+            .show()
+    }
+
+    private fun showPreview() {
+        val cropped = cropView.croppedBitmap() ?: return
+        val output = File(cacheDir, "cropped_${System.currentTimeMillis()}.jpg")
+        output.outputStream().use { cropped.compress(Bitmap.CompressFormat.JPEG, 95, it) }
+        croppedFile?.delete()
+        croppedFile = output
+        cropView.visibility = View.GONE
+        doneButton.visibility = View.GONE
+        resetButton.visibility = View.GONE
+        previewLabel.visibility = View.VISIBLE
+        preview.visibility = View.VISIBLE
+        preview.setImageBitmap(cropped)
+        sendButton.visibility = View.VISIBLE
+        resetButton.text = "Edit crop"
+        resetButton.visibility = View.VISIBLE
+        sendButton.isEnabled = qualityPassed
+    }
+
+    private fun scheduleQualityCheck() {
+        qualityJob?.cancel()
+        qualityPassed = false
+        sendButton.isEnabled = false
+        qualityGuidance.text = "Checking image quality…"
+        qualityGuidance.setTextColor(Color.WHITE)
+        qualityJob = lifecycleScope.launch {
+            // Wait until the user pauses dragging; cancel checks for older crops.
+            delay(600)
+            val bitmap = cropView.croppedBitmap() ?: return@launch
+            try {
+                val response = withContext(Dispatchers.IO) {
+                    val bytes = ByteArrayOutputStream().use { stream ->
+                        bitmap.compress(Bitmap.CompressFormat.JPEG, 95, stream)
+                        stream.toByteArray()
+                    }
+                    val baseUrl = intent.getStringExtra(EXTRA_BASE_URL)
+                        ?: error("Missing server address")
+                    RetrofitClient.getService(baseUrl).validateUpload(
+                        MultipartBody.Part.createFormData(
+                            "file", "crop.jpg", bytes.toRequestBody("image/jpeg".toMediaType()),
+                        ),
+                    )
+                }
+                ensureActive()
+                val result = response.body()?.takeIf { response.isSuccessful }
+                    ?: error("Quality check unavailable")
+                qualityPassed = result.is_usable
+                qualityGuidance.text = result.instruction
+                qualityGuidance.setTextColor(if (qualityPassed) Color.GREEN else Color.YELLOW)
+                sendButton.isEnabled = qualityPassed
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                qualityGuidance.text = "Could not check image quality. Check your connection and adjust the crop to retry."
+            } finally {
+                bitmap.recycle()
+            }
+        }
+    }
+
+    override fun onStop() {
+        qualityJob?.cancel()
+        super.onStop()
+    }
+
+    override fun onRestart() {
+        super.onRestart()
+        scheduleQualityCheck()
+    }
+
+    private fun sendCroppedFile() {
+        if (!qualityPassed) return
+        val result = croppedFile ?: return
+        setResult(Activity.RESULT_OK, Intent().putExtra(EXTRA_CROPPED, result.absolutePath))
+        sourceFile?.delete()
+        croppedFile = null
+        finish()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString("cropped_file", croppedFile?.absolutePath)
+        super.onSaveInstanceState(outState)
+    }
+
+    override fun onDestroy() {
+        qualityJob?.cancel()
+        if (isFinishing) {
+            sourceFile?.delete()
+            croppedFile?.delete()
+        }
+        super.onDestroy()
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    companion object {
+        const val EXTRA_SOURCE = "source_file"
+        const val EXTRA_BASE_URL = "base_url"
+        const val EXTRA_UPLOAD_AGAIN = "upload_again"
+        const val EXTRA_CROPPED = "cropped_file"
+    }
+}
