@@ -38,6 +38,7 @@ import kotlinx.coroutines.*
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import android.graphics.Bitmap
 import android.graphics.BitmapRegionDecoder
 import android.graphics.Matrix
@@ -104,6 +105,9 @@ class MainActivity : AppCompatActivity() {
     private var validationJob: Job? = null
     private var focusRetryJob: Job? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var cameraStartInProgress = false
+    private var isActivityResumed = false
+    private var permissionRequestInFlight = false
     private var isCapturing = false
     private var isUsable = false
     private var autoCaptureArmed = false
@@ -127,7 +131,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "CleaRx"
-        private const val BASE_URL = "http://192.168.1.3:8000"
+        private const val BASE_URL = "http://192.168.1.3:8000/"
         private const val TEST_USER_ID = "b3affcc6-4ad0-4c25-bf07-b1fd325de935"
         private const val VALIDATION_INTERVAL_MS = 700L
         private const val AUTO_CAPTURE_HOLD_MS = 1500L
@@ -143,6 +147,7 @@ class MainActivity : AppCompatActivity() {
 
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            permissionRequestInFlight = false
             if (granted) startCamera() else showPermissionDeniedDialog()
         }
 
@@ -187,10 +192,24 @@ class MainActivity : AppCompatActivity() {
         setupListeners()
         cameraExecutor = Executors.newSingleThreadExecutor()
         haptics = HapticFeedbackManager(this)
-        checkCameraPermission()
+        // Camera permission/startup runs when the activity resumes.
+    }
+
+    override fun onResume() {
+        super.onResume()
+        isActivityResumed = true
+        resumeLiveCameraIfNeeded()
+    }
+
+    override fun onPause() {
+        isActivityResumed = false
+        releaseCamera()
+        super.onPause()
     }
 
     override fun onDestroy() {
+        isActivityResumed = false
+        releaseCamera()
         captureSessionId?.let { sessionId ->
             CoroutineScope(Dispatchers.IO).launch {
                 try {
@@ -211,7 +230,6 @@ class MainActivity : AppCompatActivity() {
         cameraExecutor.shutdown()
         haptics.release()
         if (::laserScanner.isInitialized) laserScanner.stopScanning()
-        stopGatekeeperAnalysis()
     }
 
     private fun bindViews() {
@@ -315,22 +333,62 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkCameraPermission() {
+        if (!isLiveCameraPage() || permissionRequestInFlight) return
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
             == PackageManager.PERMISSION_GRANTED
         ) {
             startCamera()
         } else {
+            permissionRequestInFlight = true
             permissionLauncher.launch(Manifest.permission.CAMERA)
         }
     }
 
+    private fun hasCameraPermission(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
+            PackageManager.PERMISSION_GRANTED
+
+    private fun isLiveCameraPage(): Boolean =
+        !isFinishing && !isDestroyed && isActivityResumed &&
+            ::cameraContainer.isInitialized && cameraContainer.visibility == View.VISIBLE &&
+            ::resultScreen.isInitialized && resultScreen.visibility != View.VISIBLE && !isCapturing
+
+    private fun resumeLiveCameraIfNeeded() {
+        if (isLiveCameraPage()) checkCameraPermission()
+    }
+
+    private fun releaseCamera() {
+        validationJob?.cancel()
+        validationJob = null
+        focusRetryJob?.cancel()
+        focusRetryJob = null
+        stopGatekeeperAnalysis()
+        cameraControl?.enableTorch(false)
+        cameraProvider?.unbindAll()
+        cameraControl = null
+        imageCapture = null
+        imageAnalysis = null
+        cameraStartInProgress = false
+        if (::laserScanner.isInitialized) laserScanner.stopScanning()
+    }
+
     private fun startCamera() {
+        if (!isLiveCameraPage() || cameraStartInProgress) return
+        if (!hasCameraPermission()) {
+            showPermissionDeniedDialog()
+            return
+        }
+        cameraStartInProgress = true
         aeConverged = false
         afConverged = false
         gatekeeperResult = null
 
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
         cameraProviderFuture.addListener({
+            if (!isLiveCameraPage()) {
+                cameraStartInProgress = false
+                return@addListener
+            }
             val provider = cameraProviderFuture.get()
             cameraProvider = provider
 
@@ -344,6 +402,10 @@ class MainActivity : AppCompatActivity() {
                 ExtensionsManager.getInstanceAsync(this, provider)
 
             extensionsManagerFuture.addListener({
+                if (!isLiveCameraPage()) {
+                    cameraStartInProgress = false
+                    return@addListener
+                }
                 val extensionsManager = extensionsManagerFuture.get()
                 val baseCameraSelector  = CameraSelector.DEFAULT_BACK_CAMERA
 
@@ -424,8 +486,10 @@ class MainActivity : AppCompatActivity() {
             camera.cameraInfo.let { observeCameraState(it) }
             startValidationPolling()
             startFocusRetryLoop()
+            cameraStartInProgress = false
 
         } catch (e: Exception) {
+            cameraStartInProgress = false
             Log.e(TAG, "Camera bind failed", e)
             runOnUiThread { showGuidance(UIStrings.ERROR_CAMERA) }
         }
@@ -441,6 +505,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onGatekeeperResult(result: GatekeeperResult) {
+        if (!isLiveCameraPage() || !hasCameraPermission()) return
         gatekeeperResult = result
 
         if (isCapturing) return
@@ -466,9 +531,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun stopGatekeeperAnalysis() {
         imageAnalysis?.clearAnalyzer()
-        gatekeeper?.release()
+        val stoppedAnalyzer = gatekeeper
+        stoppedAnalyzer?.stop()
         gatekeeper = null
         imageAnalysis = null
+        if (stoppedAnalyzer != null && ::cameraExecutor.isInitialized) {
+            // Native Mats must not be freed on the UI thread while analysis uses them.
+            cameraExecutor.execute { stoppedAnalyzer.release() }
+        }
     }
 
     private fun triggerFocusAt(x: Float, y: Float) {
@@ -578,32 +648,45 @@ class MainActivity : AppCompatActivity() {
         val file     = File(cacheDir, "prev_${System.currentTimeMillis()}.jpg")
         val deferred = CompletableDeferred<Boolean>()
 
-        imageCapture?.takePicture(
-            ImageCapture.OutputFileOptions.Builder(file).build(),
-            cameraExecutor,
-            object : ImageCapture.OnImageSavedCallback {
-                override fun onImageSaved(output: ImageCapture.OutputFileResults) { deferred.complete(true)  }
-                override fun onError(exc: ImageCaptureException)                  { deferred.complete(false) }
-            }
-        ) ?: run { deferred.complete(false) }
-
-        if (!deferred.await() || !file.exists()) return
-
         try {
+            imageCapture?.takePicture(
+                ImageCapture.OutputFileOptions.Builder(file).build(),
+                cameraExecutor,
+                object : ImageCapture.OnImageSavedCallback {
+                    override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                        // A canceled polling job may receive a late camera callback.
+                        if (!deferred.complete(true)) file.delete()
+                    }
+                    override fun onError(exc: ImageCaptureException) { deferred.complete(false) }
+                },
+            ) ?: run { deferred.complete(false) }
+
+            if (!deferred.await() || !file.exists()) return
+            val jpeg = PreviewImageEncoder.encode(file)
             val part = MultipartBody.Part.createFormData(
-                "file", file.name,
-                file.asRequestBody("image/jpeg".toMediaTypeOrNull()),
+                "file", "preview.jpg",
+                jpeg.toRequestBody("image/jpeg".toMediaTypeOrNull()),
             )
             val resp = api.previewCheck(part)
             if (resp.isSuccessful) {
                 networkErrorCount = 0
                 resp.body()?.let { updatePreviewUI(it) }
+            } else if (resp.code() in listOf(400, 413, 415)) {
+                // Bad/oversized camera images do not mean the server is offline.
+                networkErrorCount = 0
+                Log.w(TAG, "Preview image rejected: HTTP ${resp.code()}, ${jpeg.size} bytes")
+                withContext(Dispatchers.Main) {
+                    showGuidance("Preview could not be checked. Hold steady or reopen the camera.")
+                }
             } else {
                 handleNetworkError("HTTP ${resp.code()}")
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             handleNetworkError(e.message ?: "unknown")
         } finally {
+            deferred.cancel()
             file.delete()
         }
     }

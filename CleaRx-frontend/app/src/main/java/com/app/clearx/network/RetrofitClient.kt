@@ -28,7 +28,9 @@ object RetrofitClient {
 
     @Volatile private var validationRetrofit: Retrofit? = null
     @Volatile private var processingRetrofit: Retrofit? = null
-    @Volatile private var currentBaseUrl: String        = ""
+    @Volatile private var validationBaseUrl: String        = ""
+
+    @Volatile private var processingBaseUrl: String = ""
 
     private fun buildRetrofit(baseUrl: String, client: OkHttpClient): Retrofit =
         Retrofit.Builder()
@@ -38,10 +40,10 @@ object RetrofitClient {
             .build()
 
     fun getService(baseUrl: String): ApiService {
-        if (validationRetrofit == null || currentBaseUrl != baseUrl) {
+        if (validationRetrofit == null || validationBaseUrl != baseUrl) {
             synchronized(this) {
-                if (validationRetrofit == null || currentBaseUrl != baseUrl) {
-                    currentBaseUrl    = baseUrl
+                if (validationRetrofit == null || validationBaseUrl != baseUrl) {
+                    validationBaseUrl    = baseUrl
                     validationRetrofit = buildRetrofit(baseUrl, validationClient)
                 }
             }
@@ -50,10 +52,10 @@ object RetrofitClient {
     }
 
     fun getProcessingService(baseUrl: String): ApiService {
-        if (processingRetrofit == null || currentBaseUrl != baseUrl) {
+        if (processingRetrofit == null || processingBaseUrl != baseUrl) {
             synchronized(this) {
-                if (processingRetrofit == null || currentBaseUrl != baseUrl) {
-                    currentBaseUrl    = baseUrl
+                if (processingRetrofit == null || processingBaseUrl != baseUrl) {
+                    processingBaseUrl    = baseUrl
                     processingRetrofit = buildRetrofit(baseUrl, processingClient)
                 }
             }
