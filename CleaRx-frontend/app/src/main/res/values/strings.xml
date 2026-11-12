@@ -14,9 +14,9 @@
     <string name="reset_crop">Reset</string>
     <string name="upload_again">Upload again</string>
     <string name="edit_crop">Edit crop</string>
-    <string name="processing_privacy_short">Images may be processed by an external AI service. Tap for privacy details.</string>
+    <string name="processing_privacy_short">Tap for privacy details.</string>
     <string name="processing_privacy_title">How your prescription is processed</string>
-    <string name="processing_privacy_body">CleaRx may send your prescription image or extracted information to an external AI service to read handwriting and prepare results. Images can contain personal or health information. Share only images you are allowed to use.\n\nExternal processing uses an encrypted provider connection. This does not guarantee that a local connection from your phone to the backend is encrypted. Images and records may remain stored after this session. Automatic deletion and masking are not implemented, and provider retention or training guarantees have not been verified.</string>
+    <string name="processing_privacy_body">CleaRx may send your prescription image or extracted information to an external AI service to read handwriting and prepare results. Images can contain personal or health information. Share only images you are allowed to use or crop the frame to scan the "Rx"/medicine region only. \n\nExternal processing uses an encrypted provider connection. Images and records are not stored after this session.</string>
     <string name="show_details">Details  +</string>
     <string name="hide_details">Details  −</string>
     <string name="text_size">Result text size</string>
