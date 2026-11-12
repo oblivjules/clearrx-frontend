@@ -1,5 +1,6 @@
 <resources>
-    <string name="app_name">CleaRx</string>
+    <!-- Keep the label visually blank without triggering the package-name fallback. -->
+    <string name="app_name">\u00A0</string>
     <string name="select_file">Choose image</string>
     <string name="image_selected">Image selected</string>
     <string name="crop_instruction">Please crop the image to include only the prescription (Rx) or medication section before submitting.</string>

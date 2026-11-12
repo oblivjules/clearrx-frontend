@@ -234,3 +234,25 @@ performed. Release network processing still requires a configured HTTPS endpoint
 - Follow-up: the user reports successful Android verification and approves
   this wording commit. Backend counterpart: `8665530`; endpoint commit: `0d66946`.
 - Commit: approved as `fix(ocr): align recognition option disclosure`.
+
+## Post-migration - Official splash branding
+
+- Use the current user-approved 2000x2000 branding asset in drawable, replacing
+  the initially reviewed 512x512 copy. The user explicitly approved the updated
+  logo and generated launcher/play-store icons before this commit. Preserve the
+  current artwork and center it in the padded 192dp/288dp system splash drawable.
+- Use the existing core-splashscreen compatibility dependency for API 26+.
+  Route immediately to MainActivity without a second custom splash layout or
+  the previous fixed 500ms delay. Update day/night splash themes and launcher
+  activity theme; preserve camera permissions and the navigation target.
+- Include the user's launcher-icon updates and visually blank application label.
+  Remove the unused custom splash layout and superseded splash bitmap.
+- Verification: source XML and string references pass; current square artwork's
+  sampled visible radius fits the 96dp system icon safe radius. Earlier packaged
+  debug checks covered the initially supplied asset, not the replacement artwork.
+  The user reports successful Android verification of the current working app.
+  No device-version-specific visual checks were executed by the agent.
+- Backend counterpart: `8665530`; endpoint: `0d66946`; disclosure: `53d91d6`.
+- Commit: user approved `feat(branding): use official CleaRx splash artwork`.
+- Additional privacy-text edits are intentionally excluded: their no-retention
+  claim does not match the unchanged backend storage behavior.
