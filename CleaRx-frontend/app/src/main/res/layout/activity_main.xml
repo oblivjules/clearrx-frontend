@@ -11,7 +11,11 @@
     <FrameLayout
             android:id="@+id/cameraContainer"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
+            android:layout_height="0dp"
+            app:layout_constraintTop_toBottomOf="@id/modelPicker"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
             android:visibility="visible">
 
         <androidx.camera.view.PreviewView
@@ -72,7 +76,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="bottom|center_horizontal"
-                android:layout_marginBottom="40dp">
+                android:layout_marginBottom="64dp">
 
             <View
                     android:layout_width="84dp"
@@ -89,6 +93,28 @@
                     android:elevation="4dp"
                     android:src="@drawable/ic_camera_capture" />
         </FrameLayout>
+        <com.app.clearx.UploadLoaderView
+                android:id="@+id/selectFileButton"
+                android:layout_width="52dp"
+                android:layout_height="52dp"
+                android:layout_gravity="bottom|start"
+                android:layout_marginStart="24dp"
+                android:layout_marginBottom="56dp"
+                android:contentDescription="@string/select_file" />
+
+        <TextView
+                android:id="@+id/processingPrivacyNotice"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_gravity="bottom"
+                android:background="#DD202020"
+                android:gravity="center"
+                android:paddingHorizontal="12dp"
+                android:text="@string/processing_privacy_short"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp"
+                android:clickable="true"
+                android:focusable="true" />
     </FrameLayout>
 
     <!-- LAYER 2: PROCESSING OVERLAY -->
@@ -255,7 +281,11 @@
     <androidx.cardview.widget.CardView
             android:id="@+id/resultScreen"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
+            android:layout_height="0dp"
+            app:layout_constraintTop_toBottomOf="@id/workflowHeader"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
             android:visibility="gone"
             app:cardBackgroundColor="@color/surface_background"
             app:cardCornerRadius="0dp"
@@ -280,15 +310,15 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:background="@color/brand_primary"
-                            android:orientation="horizontal"
+                            android:orientation="vertical"
                             android:paddingHorizontal="20dp"
                             android:paddingVertical="18dp"
                             android:gravity="center_vertical">
 
                         <LinearLayout
-                                android:layout_width="0dp"
+                                android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
-                                android:layout_weight="1"
+
                                 android:orientation="vertical">
 
                             <TextView
@@ -329,75 +359,10 @@
                             android:orientation="vertical"
                             android:padding="20dp">
 
-                        <!-- Enhanced image card -->
-                        <androidx.cardview.widget.CardView
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:layout_marginBottom="12dp"
-                                app:cardCornerRadius="16dp"
-                                app:cardElevation="4dp"
-                                app:cardBackgroundColor="@color/surface_card">
-
-                            <ImageView
-                                    android:id="@+id/enhancedImageView"
-                                    android:layout_width="match_parent"
-                                    android:layout_height="260dp"
-                                    android:scaleType="fitCenter"
-                                    android:background="#F1F5F9" />
-                        </androidx.cardview.widget.CardView>
-
-                        <!-- Original thumbnail + quality score -->
-                        <LinearLayout
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:layout_marginBottom="20dp"
-                                android:background="@color/surface_card"
-                                android:gravity="center_vertical"
-                                android:orientation="horizontal"
-                                android:padding="12dp">
-
-                            <!-- Wrap ShapeableImageView in CardView for elevation -->
-                            <androidx.cardview.widget.CardView
-                                    android:layout_width="60dp"
-                                    android:layout_height="60dp"
-                                    app:cardCornerRadius="10dp"
-                                    app:cardElevation="2dp">
-
-                                <com.google.android.material.imageview.ShapeableImageView
-                                        android:id="@+id/originalImageView"
-                                        android:layout_width="60dp"
-                                        android:layout_height="60dp"
-                                        android:scaleType="centerCrop"
-                                        app:shapeAppearanceOverlay="@style/RoundedSquare" />
-                            </androidx.cardview.widget.CardView>
-
-                            <LinearLayout
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:layout_marginStart="14dp"
-                                    android:orientation="vertical">
-
-                                <TextView
-                                        android:layout_width="wrap_content"
-                                        android:layout_height="wrap_content"
-                                        android:text="ORIGINAL CAPTURE"
-                                        android:textColor="@color/text_secondary"
-                                        android:textSize="10sp"
-                                        android:letterSpacing="0.1"
-                                        android:textAllCaps="true" />
-
-                                <TextView
-                                        android:id="@+id/qualityScoreText"
-                                        android:layout_width="wrap_content"
-                                        android:layout_height="wrap_content"
-                                        android:layout_marginTop="2dp"
-                                        android:fontFamily="sans-serif-medium"
-                                        android:text="Quality Score: —"
-                                        android:textColor="@color/text_main"
-                                        android:textSize="14sp" />
-                            </LinearLayout>
-                        </LinearLayout>
-
+                        <TextView android:id="@+id/readerDisclaimer" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="12dp" android:padding="12dp" android:background="@drawable/notice_background" android:text="@string/reader_disclaimer_compact" android:textColor="@color/text_main" android:textSize="13sp" />
+                        <TextView android:id="@+id/resultMessage" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="12dp" android:padding="12dp" android:background="@drawable/notice_background" android:text="@string/review_guidance_compact" android:textColor="@color/text_main" android:textSize="13sp" />
+                        <TextView android:id="@+id/persistenceWarning" android:visibility="gone" android:accessibilityLiveRegion="polite" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="12dp" android:padding="12dp" android:background="@drawable/notice_background" android:text="@string/save_failed_notice" android:textColor="@color/text_main" android:textSize="13sp" />
+                        <com.google.android.material.button.MaterialButton android:id="@+id/textSizeButton" style="@style/Widget.App.Button.Outlined" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:layout_marginBottom="12dp" android:text="@string/text_size" />
                         <!-- Prescription Result Section -->
                         <LinearLayout
                                 android:id="@+id/prescriptionCard"
@@ -449,6 +414,77 @@
                         </LinearLayout>
                         <!-- END Prescription Result Section -->
 
+                        <TextView android:id="@+id/detailsToggle" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:gravity="center_vertical" android:clickable="true" android:focusable="true" android:text="@string/show_details" android:textColor="@color/brand_primary" android:textSize="16sp" />
+                        <LinearLayout android:id="@+id/detailsPanel" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
+                        <!-- Enhanced image card -->
+                        <androidx.cardview.widget.CardView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginBottom="12dp"
+                                app:cardCornerRadius="16dp"
+                                app:cardElevation="4dp"
+                                app:cardBackgroundColor="@color/surface_card">
+
+                            <ImageView
+                                    android:id="@+id/enhancedImageView"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="260dp"
+                                    android:scaleType="fitCenter"
+                                    android:background="#F1F5F9" />
+                        </androidx.cardview.widget.CardView>
+
+                        <!-- Original thumbnail + quality score -->
+                        <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginBottom="20dp"
+                                android:background="@color/surface_card"
+                                android:gravity="center_vertical"
+                                android:orientation="horizontal"
+                                android:padding="12dp">
+
+                            <!-- Wrap ShapeableImageView in CardView for elevation -->
+                            <androidx.cardview.widget.CardView
+                                    android:layout_width="60dp"
+                                    android:layout_height="60dp"
+                                    app:cardCornerRadius="10dp"
+                                    app:cardElevation="2dp">
+
+                                <com.google.android.material.imageview.ShapeableImageView
+                                        android:id="@+id/originalImageView"
+                                        android:layout_width="60dp"
+                                        android:layout_height="60dp"
+                                        android:scaleType="centerCrop"
+                                        app:shapeAppearanceOverlay="@style/RoundedSquare" />
+                            </androidx.cardview.widget.CardView>
+
+                            <LinearLayout
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginStart="14dp"
+                                    android:orientation="vertical">
+
+                                <TextView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:text="@string/original_photo"
+                                        android:textColor="@color/text_secondary"
+                                        android:textSize="10sp"
+                                        android:letterSpacing="0.1"
+                                        android:textAllCaps="true" />
+
+                                <TextView
+                                        android:id="@+id/qualityScoreText"
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:layout_marginTop="2dp"
+                                        android:fontFamily="sans-serif-medium"
+                                        android:text="Quality Score: —"
+                                        android:textColor="@color/text_main"
+                                        android:textSize="14sp" />
+                            </LinearLayout>
+                        </LinearLayout>
+
                         <!-- Raw OCR text -->
                         <LinearLayout
                                 android:id="@+id/rawOcrSection"
@@ -475,7 +511,7 @@
                                         android:layout_width="0dp"
                                         android:layout_height="wrap_content"
                                         android:layout_weight="1"
-                                        android:text="RAW OCR TEXT"
+                                        android:text="@string/raw_text"
                                         android:textColor="@color/text_secondary"
                                         android:textSize="13sp"
                                         android:letterSpacing="0.08"
@@ -505,6 +541,8 @@
                                     android:textSize="14sp"
                                     android:lineSpacingExtra="2dp"
                                     android:textIsSelectable="true" />
+                        </LinearLayout>
+
                         </LinearLayout>
 
                     </LinearLayout>
@@ -543,4 +581,21 @@
 
         </androidx.coordinatorlayout.widget.CoordinatorLayout>
     </androidx.cardview.widget.CardView>
+
+    <LinearLayout android:id="@+id/workflowHeader" android:layout_width="0dp" android:layout_height="wrap_content" android:minHeight="56dp" android:orientation="horizontal" android:gravity="center_vertical" android:paddingHorizontal="16dp" android:paddingVertical="4dp" android:background="@color/brand_primary" android:elevation="32dp" app:layout_constraintTop_toTopOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent">
+        <TextView android:id="@+id/workflowProgress" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginEnd="8dp" android:text="Step 1 of 4: Capture or choose an image" android:textColor="#FFFFFF" android:textSize="14sp" android:accessibilityLiveRegion="polite" />
+        <com.google.android.material.button.MaterialButton android:id="@+id/howToUseButton" style="@style/Widget.App.Button.Header" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/how_to_use" />
+    </LinearLayout>
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/modelPicker"
+        style="@style/Widget.App.Button.Header"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:minHeight="48dp"
+        android:layout_marginHorizontal="12dp"
+        android:text="@string/default_capture_model"
+        android:contentDescription="@string/recognition_model_description"
+        app:layout_constraintTop_toBottomOf="@id/workflowHeader"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 </androidx.constraintlayout.widget.ConstraintLayout>

@@ -1,5 +1,6 @@
 package com.app.clearx.network
 
+import com.app.clearx.BuildConfig
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -9,7 +10,8 @@ import java.util.concurrent.TimeUnit
 object RetrofitClient {
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
-        level = HttpLoggingInterceptor.Level.BASIC
+        level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC
+            else HttpLoggingInterceptor.Level.NONE
     }
 
     private val validationClient = OkHttpClient.Builder()
@@ -28,7 +30,9 @@ object RetrofitClient {
 
     @Volatile private var validationRetrofit: Retrofit? = null
     @Volatile private var processingRetrofit: Retrofit? = null
-    @Volatile private var currentBaseUrl: String        = ""
+    @Volatile private var validationBaseUrl: String        = ""
+
+    @Volatile private var processingBaseUrl: String = ""
 
     private fun buildRetrofit(baseUrl: String, client: OkHttpClient): Retrofit =
         Retrofit.Builder()
@@ -38,10 +42,10 @@ object RetrofitClient {
             .build()
 
     fun getService(baseUrl: String): ApiService {
-        if (validationRetrofit == null || currentBaseUrl != baseUrl) {
+        if (validationRetrofit == null || validationBaseUrl != baseUrl) {
             synchronized(this) {
-                if (validationRetrofit == null || currentBaseUrl != baseUrl) {
-                    currentBaseUrl    = baseUrl
+                if (validationRetrofit == null || validationBaseUrl != baseUrl) {
+                    validationBaseUrl    = baseUrl
                     validationRetrofit = buildRetrofit(baseUrl, validationClient)
                 }
             }
@@ -50,10 +54,10 @@ object RetrofitClient {
     }
 
     fun getProcessingService(baseUrl: String): ApiService {
-        if (processingRetrofit == null || currentBaseUrl != baseUrl) {
+        if (processingRetrofit == null || processingBaseUrl != baseUrl) {
             synchronized(this) {
-                if (processingRetrofit == null || currentBaseUrl != baseUrl) {
-                    currentBaseUrl    = baseUrl
+                if (processingRetrofit == null || processingBaseUrl != baseUrl) {
+                    processingBaseUrl    = baseUrl
                     processingRetrofit = buildRetrofit(baseUrl, processingClient)
                 }
             }

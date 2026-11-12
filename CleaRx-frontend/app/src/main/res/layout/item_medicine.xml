@@ -41,7 +41,18 @@
                 android:text="—"
                 android:textColor="@color/text_main"
                 android:textSize="16sp"
-                android:textStyle="bold" />
+                android:fontFamily="@font/inter_semibold"
+                android:textStyle="normal" />
+
+            <TextView
+                    android:id="@+id/itemConfidenceBadge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:fontFamily="@font/inter_medium"
+                    android:textSize="12sp"
+                    android:textStyle="normal"
+                    android:visibility="gone" />
 
             <TextView
                 android:id="@+id/itemMealRelation"

@@ -100,6 +100,7 @@ class GatekeeperAnalyzer(
     }
 
     private val mainHandler    = Handler(Looper.getMainLooper())
+    @Volatile private var stopped = false
     private var lastAnalysisMs = 0L
 
     private val sharpnessGate = HysteresisGate(failThreshold = 3, passThreshold = 2)
@@ -131,6 +132,10 @@ class GatekeeperAnalyzer(
     }
 
     override fun analyze(image: ImageProxy) {
+        if (stopped) {
+            image.close()
+            return
+        }
         val now = System.currentTimeMillis()
         if (now - lastAnalysisMs < MIN_INTERVAL_MS) {
             image.close()
@@ -141,11 +146,10 @@ class GatekeeperAnalyzer(
         try {
             allocateMats()
             if (!matsAllocated) {
-                image.close()
                 return
             }
             val result = runChecks(image)
-            mainHandler.post { onResult(result) }
+            mainHandler.post { if (!stopped) onResult(result) }
         } catch (e: Exception) {
             Log.w(TAG, "Frame analysis error: ${e.message}")
         } finally {
@@ -319,7 +323,14 @@ class GatekeeperAnalyzer(
         }
     }
 
+    fun stop() {
+        stopped = true
+        mainHandler.removeCallbacksAndMessages(null)
+    }
+
+    // Called on the analysis executor after any frame already being processed.
     fun release() {
+        stop()
         if (!matsAllocated) return
         scaledMat.release()
         roiMat.release()

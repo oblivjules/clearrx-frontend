@@ -9,7 +9,7 @@
 
     <style name="Theme.CleaRx.Splash" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@android:color/white</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/clearx_splash_logo</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/clearx_splash_icon</item>
         <item name="postSplashScreenTheme">@style/Theme.CleaRx</item>
     </style>
 </resources>

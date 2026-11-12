@@ -49,24 +49,12 @@ data class CaptureSessionResponse(
     val reason: String? = null,
 )
 
-data class ParsedPrescription(
-    val brand_name: String? = null,
-    val drug_name: String? = null,
-    val drug_name_raw: String? = null,
-    val dosage: String? = null,
-    val frequency: String? = null,
-    val route_of_administration: String? = null,
-    val quantity: String? = null,
-    val duration: String? = null,
-    val meal_relation: String? = null,
-    val dispense_quantity: String? = null,
-    val strength: String? = null,
-    val dosage_form: String? = null,
-    val dose_amount: String? = null,
-    val timing: String? = null,
-    val administration_instructions: String? = null,
-    val duration_source: String? = null,
-    val uncertain_fields: List<String>? = emptyList(),
+data class FileUploadResponse(
+    val status: String = "error",
+    val image_id: String? = null,
+    val attempt_number: Int = 0,
+    val content_type: String? = null,
+    val size_bytes: Long = 0,
 )
 
 data class CerResult(
@@ -82,6 +70,11 @@ data class CerResult(
 )
 
 data class ProcessImageResponse(
+    val ocr_confidence: Float? = null,
+    val ocr_confidence_basis: String? = null,
+    val name_similarity: Float? = null,
+    val review_required: Boolean = false,
+    val persistence_status: String? = null,
     val status: String = "error",
     val detection: String = "full_frame",
     val reason: String? = null,
@@ -105,6 +98,20 @@ data class ProcessImageResponse(
 )
 
 interface ApiService {
+    @Multipart
+    @POST("validate-upload")
+    suspend fun validateUpload(
+        @Part file: MultipartBody.Part,
+    ): Response<ValidateCaptureResponse>
+
+    @Multipart
+    @POST("upload-file")
+    suspend fun uploadFile(
+        @Part file: MultipartBody.Part,
+        @Part sessionId: MultipartBody.Part,
+    ): Response<FileUploadResponse>
+
+
 
     @Multipart
     @POST("capture-session")
@@ -149,5 +156,6 @@ interface ApiService {
         @Part file: MultipartBody.Part,
         @Part imageId: MultipartBody.Part? = null,
         @Part groundTruth: MultipartBody.Part? = null,
+        @Part model: MultipartBody.Part? = null,
     ): Response<ProcessImageResponse>
 }

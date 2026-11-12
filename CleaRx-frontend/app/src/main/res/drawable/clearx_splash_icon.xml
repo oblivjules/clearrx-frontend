@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 288dp system icon canvas, 192dp square artwork area. The supplied artwork
+     fits the 192dp circular safe area; its pixels and aspect ratio are unchanged. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:width="192dp" android:height="192dp"
+        android:left="48dp" android:top="48dp" android:right="48dp" android:bottom="48dp"
+        android:gravity="center">
+        <bitmap android:src="@drawable/clearx_brand_logo" android:gravity="fill" android:filter="true" />
+    </item>
+</layer-list>

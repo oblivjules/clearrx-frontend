@@ -1,6 +1,40 @@
+import java.net.URI
+
 plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.jetbrainsKotlinAndroid)
+}
+
+val releaseBackendUrl = "https://clearx-refactored.onrender.com/"
+val debugBackendUrl = providers.gradleProperty("clearx.debugBackendUrl")
+    .orElse("http://192.168.1.3:8000/").get().trim().let { if (it.endsWith("/")) it else "$it/" }
+val debugBackendUri = URI(debugBackendUrl)
+require(debugBackendUri.scheme in setOf("http", "https") &&
+    debugBackendUri.host?.matches(Regex("[A-Za-z0-9.-]+")) == true &&
+    debugBackendUri.userInfo == null && debugBackendUri.query == null && debugBackendUri.fragment == null) {
+    "clearx.debugBackendUrl must be an HTTP(S) URL with a hostname and no credentials, query or fragment"
+}
+fun buildConfigString(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
+val debugNetworkResources = layout.buildDirectory.dir("generated/clearx/debug/res")
+val generateDebugNetworkPolicy by tasks.registering {
+    inputs.property("backendHost", debugBackendUri.host)
+    outputs.dir(debugNetworkResources)
+    doLast {
+        val output = debugNetworkResources.get().file("xml/network_security_config.xml").asFile
+        output.parentFile.mkdirs()
+        output.writeText("""
+            <?xml version="1.0" encoding="utf-8"?>
+            <network-security-config>
+                <base-config cleartextTrafficPermitted="false">
+                    <trust-anchors><certificates src="system" /></trust-anchors>
+                </base-config>
+                <domain-config cleartextTrafficPermitted="true">
+                    <domain>${debugBackendUri.host}</domain>
+                </domain-config>
+            </network-security-config>
+        """.trimIndent())
+    }
 }
 
 android {
@@ -16,8 +50,14 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    sourceSets.getByName("debug").res.srcDir(debugNetworkResources)
+
     buildTypes {
+        debug {
+            buildConfigField("String", "BACKEND_BASE_URL", buildConfigString(debugBackendUrl))
+        }
         release {
+            buildConfigField("String", "BACKEND_BASE_URL", buildConfigString(releaseBackendUrl))
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -81,3 +121,4 @@ dependencies {
 
     implementation("androidx.camera:camera-extensions:1.4.0")
 }
+tasks.matching { it.name == "preDebugBuild" }.configureEach { dependsOn(generateDebugNetworkPolicy) }

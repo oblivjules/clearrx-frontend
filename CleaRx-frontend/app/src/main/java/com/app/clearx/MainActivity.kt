@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.net.Uri
+import androidx.core.view.ViewCompat
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -15,11 +16,13 @@ import android.util.Log
 import android.util.Size
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.animation.AlphaAnimation
 import android.view.animation.Animation
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.*
 import androidx.camera.extensions.ExtensionMode
@@ -38,6 +41,7 @@ import kotlinx.coroutines.*
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import android.graphics.Bitmap
 import android.graphics.BitmapRegionDecoder
 import android.graphics.Matrix
@@ -46,11 +50,96 @@ import android.graphics.RectF
 import android.view.Surface
 import androidx.exifinterface.media.ExifInterface
 import java.io.File
+import java.io.FileOutputStream
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
+
+    private val usabilityPreferences by lazy { getSharedPreferences("usability", MODE_PRIVATE) }
+    private var productTour: ProductTourView? = null
+    private var selectedRecognitionModel = RecognitionModel.PRIMARY
+
+    private fun updateWorkflow(step: Int, label: String) {
+        findViewById<TextView>(R.id.workflowProgress).text = "Step $step of 4: $label"
+    }
+
+    private fun showProductTour() {
+        if (productTour != null || (isCapturing && resultScreen.visibility != View.VISIBLE) ||
+            isFinishing || isDestroyed) return
+        val wasCameraSuppressed = cameraSuppressed
+        cameraSuppressed = true
+        releaseCamera()
+        val contentRoot = findViewById<ViewGroup>(android.R.id.content)
+        val processingOverlay = findViewById<View>(R.id.processingOverlay)
+        val resultScreen = findViewById<View>(R.id.resultScreen)
+        val prescriptionCard = findViewById<View>(R.id.prescriptionCard)
+        val detailsPanel = findViewById<View>(R.id.detailsPanel)
+        val cameraContainer = findViewById<View>(R.id.cameraContainer)
+        val rawOcrSection = findViewById<View>(R.id.rawOcrSection)
+        val rxConfidenceBadge = findViewById<TextView>(R.id.rxConfidenceBadge)
+        val originalConfidenceText = rxConfidenceBadge.text
+        val originalVisibility = mapOf(
+            findViewById<View>(R.id.modelPicker) to findViewById<View>(R.id.modelPicker).visibility,
+            processingOverlay to processingOverlay.visibility,
+            resultScreen to resultScreen.visibility,
+            prescriptionCard to prescriptionCard.visibility,
+            detailsPanel to detailsPanel.visibility,
+            rawOcrSection to rawOcrSection.visibility,
+        )
+        val activityContent = contentRoot.getChildAt(0)
+        val originalAccessibility = activityContent.importantForAccessibility
+        activityContent.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+        val originalCameraBackground = cameraContainer.background
+        cameraContainer.setBackgroundColor(ContextCompat.getColor(this, R.color.brand_primary_dark))
+        val tour = ProductTourView(
+            context = this,
+            targets = listOf(
+                findViewById(R.id.captureButton),
+                findViewById(R.id.processingStatusText),
+                findViewById(R.id.rxConfidenceBadge),
+                findViewById(R.id.detailsToggle),
+            ),
+            fallbackTarget = findViewById(R.id.workflowProgress),
+            onStepChanged = { step ->
+                findViewById<View>(R.id.modelPicker).visibility = if (step == 0) View.VISIBLE else View.GONE
+                processingOverlay.visibility = if (step == 1) View.VISIBLE else View.GONE
+                resultScreen.visibility = if (step >= 2) View.VISIBLE else View.GONE
+                prescriptionCard.visibility = if (step >= 2) View.VISIBLE else originalVisibility[prescriptionCard] ?: View.GONE
+                detailsPanel.visibility = if (step == 2) View.VISIBLE else originalVisibility[detailsPanel] ?: View.GONE
+                rawOcrSection.visibility = if (step == 2) View.VISIBLE else originalVisibility[rawOcrSection] ?: View.GONE
+                if (step == 2) rxConfidenceBadge.text = "Name similarity: review this label"
+                else rxConfidenceBadge.text = originalConfidenceText
+            },
+        ) {
+            originalVisibility.forEach { (view, visibility) -> view.visibility = visibility }
+            rxConfidenceBadge.text = originalConfidenceText
+            cameraContainer.background = originalCameraBackground
+            usabilityPreferences.edit().putBoolean("onboarding_complete", true).apply()
+            contentRoot.removeView(productTour)
+            productTour = null
+            activityContent.importantForAccessibility = originalAccessibility
+            cameraSuppressed = wasCameraSuppressed
+            resumeLiveCameraIfNeeded()
+        }
+        productTour = tour
+        contentRoot.addView(tour, ViewGroup.LayoutParams.MATCH_PARENT.let { width ->
+            ViewGroup.LayoutParams(width, ViewGroup.LayoutParams.MATCH_PARENT)
+        })
+        tour.show()
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    private fun applyOutputTextSize() {
+        val scale = usabilityPreferences.getInt("output_size", 0).coerceIn(0, 2)
+        val factor = listOf(1f, 1.2f, 1.4f)[scale]
+        medicineAdapter.setTextScale(factor)
+        rawOcrText.textSize = 14f * factor
+        findViewById<TextView>(R.id.readerDisclaimer).textSize = 12f * factor
+        findViewById<TextView>(R.id.resultMessage).textSize = 13f * factor
+    }
 
     // Views
     private lateinit var previewView: PreviewView
@@ -58,6 +147,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var laserScanner: LaserScannerView
     private lateinit var guidanceText: TextView
     private lateinit var captureButton: ImageButton
+    private lateinit var selectFileButton: UploadLoaderView
     private lateinit var flashlightButton: ImageButton
     private lateinit var focusRipple: View
     private lateinit var cameraContainer: FrameLayout
@@ -104,6 +194,10 @@ class MainActivity : AppCompatActivity() {
     private var validationJob: Job? = null
     private var focusRetryJob: Job? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var cameraSuppressed = false
+    private var cameraStartInProgress = false
+    private var isActivityResumed = false
+    private var permissionRequestInFlight = false
     private var isCapturing = false
     private var isUsable = false
     private var autoCaptureArmed = false
@@ -127,7 +221,6 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "CleaRx"
-        private const val BASE_URL = "http://192.168.1.3:8000"
         private const val TEST_USER_ID = "b3affcc6-4ad0-4c25-bf07-b1fd325de935"
         private const val VALIDATION_INTERVAL_MS = 700L
         private const val AUTO_CAPTURE_HOLD_MS = 1500L
@@ -143,19 +236,64 @@ class MainActivity : AppCompatActivity() {
 
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            permissionRequestInFlight = false
             if (granted) startCamera() else showPermissionDeniedDialog()
+        }
+
+    private val filePickerLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) handleSelectedFile(uri)
+            else {
+                cameraSuppressed = false
+                resumeLiveCameraIfNeeded()
+            }
+        }
+
+    private val cropLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode == RESULT_OK) {
+                result.data?.getStringExtra(CropActivity.EXTRA_CROPPED)
+                    ?.let { startCroppedProcessing(File(it)) }
+            } else if (result.data?.getBooleanExtra(CropActivity.EXTRA_UPLOAD_AGAIN, false) == true) {
+                chooseImage()
+            } else {
+                cameraSuppressed = false
+                resumeLiveCameraIfNeeded()
+            }
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.i(TAG, "CleaRx build version=${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
         setContentView(R.layout.activity_main)
+        val modelPicker = findViewById<com.google.android.material.button.MaterialButton>(R.id.modelPicker)
+        val modelPreferences = getSharedPreferences("ocr_model", MODE_PRIVATE)
+        selectedRecognitionModel = RecognitionModel.fromSavedId(modelPreferences.getString("model", null))
+        modelPicker.text = getString(R.string.capture_model, selectedRecognitionModel.displayName)
+        modelPicker.contentDescription = "${modelPicker.text}. ${getString(R.string.recognition_model_description)}"
+        modelPicker.setOnClickListener {
+            if (!isCapturing && productTour == null) {
+                val options = RecognitionModel.values()
+                MaterialAlertDialogBuilder(this, R.style.ThemeOverlay_CleaRx_Dialog)
+                    .setTitle(R.string.choose_capture_model)
+                    .setSingleChoiceItems(options.map { it.displayName }.toTypedArray(),
+                        options.indexOf(selectedRecognitionModel)) { dialog, index ->
+                        selectedRecognitionModel = options[index]
+                        modelPreferences.edit().putString("model", selectedRecognitionModel.apiId).apply()
+                        modelPicker.text = getString(R.string.capture_model, selectedRecognitionModel.displayName)
+                        modelPicker.contentDescription = "${modelPicker.text}. ${getString(R.string.recognition_model_description)}"
+                        dialog.dismiss()
+                    }
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .show()
+            }
+        }
         captureUserId = intent.getStringExtra("user_id") ?: TEST_USER_ID
         captureSessionId = intent.getStringExtra("session_id")
         if (captureSessionId == null && captureUserId != null) {
             sessionCreationJob = lifecycleScope.async(Dispatchers.IO) {
                 try {
-                    val response = RetrofitClient.getProcessingService(BASE_URL)
+                    val response = RetrofitClient.getProcessingService(BuildConfig.BACKEND_BASE_URL)
                         .createCaptureSession(
                             MultipartBody.Part.createFormData("user_id", captureUserId!!),
                         )
@@ -185,16 +323,46 @@ class MainActivity : AppCompatActivity() {
             cursorText   = terminalCursor
         )
         setupListeners()
+        selectFileButton.setOnClickListener { chooseImage() }
+        findViewById<View>(R.id.processingPrivacyNotice).setOnClickListener { showProcessingPrivacy() }
         cameraExecutor = Executors.newSingleThreadExecutor()
         haptics = HapticFeedbackManager(this)
-        checkCameraPermission()
+        applyOutputTextSize()
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                val tour = productTour
+                if (tour != null) tour.finish() else {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                    isEnabled = true
+                }
+            }
+        })
+        // Camera permission/startup runs when the activity resumes.
+    }
+
+    override fun onResume() {
+        super.onResume()
+        isActivityResumed = true
+        if (!usabilityPreferences.getBoolean("onboarding_complete", false)) showProductTour()
+        else resumeLiveCameraIfNeeded()
+    }
+
+    override fun onPause() {
+        isActivityResumed = false
+        releaseCamera()
+        super.onPause()
     }
 
     override fun onDestroy() {
+        productTour?.let { (it.parent as? ViewGroup)?.removeView(it) }
+        productTour = null
+        isActivityResumed = false
+        releaseCamera()
         captureSessionId?.let { sessionId ->
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    RetrofitClient.getProcessingService(BASE_URL).closeCaptureSession(
+                    RetrofitClient.getProcessingService(BuildConfig.BACKEND_BASE_URL).closeCaptureSession(
                         MultipartBody.Part.createFormData("session_id", sessionId),
                         MultipartBody.Part.createFormData("session_status", "abandoned"),
                     )
@@ -211,7 +379,6 @@ class MainActivity : AppCompatActivity() {
         cameraExecutor.shutdown()
         haptics.release()
         if (::laserScanner.isInitialized) laserScanner.stopScanning()
-        stopGatekeeperAnalysis()
     }
 
     private fun bindViews() {
@@ -219,6 +386,7 @@ class MainActivity : AppCompatActivity() {
         framingOverlay     = findViewById(R.id.framingOverlay)
         guidanceText       = findViewById(R.id.guidanceText)
         captureButton      = findViewById(R.id.captureButton)
+        selectFileButton   = findViewById(R.id.selectFileButton)
         flashlightButton   = findViewById(R.id.flashlightButton)
         focusRipple        = findViewById(R.id.focusRipple)
         cameraContainer    = findViewById(R.id.cameraContainer)
@@ -229,6 +397,13 @@ class MainActivity : AppCompatActivity() {
         terminalProgressText = findViewById(R.id.terminalProgressText)
         terminalCursor       = findViewById(R.id.terminalCursor)
         resultScreen         = findViewById(R.id.resultScreen)
+        findViewById<TextView>(R.id.detailsToggle).setOnClickListener { view ->
+            val panel = findViewById<View>(R.id.detailsPanel)
+            val expanded = panel.visibility != View.VISIBLE
+            panel.visibility = if (expanded) View.VISIBLE else View.GONE
+            (view as TextView).setText(if (expanded) R.string.hide_details else R.string.show_details)
+            ViewCompat.setStateDescription(view, if (expanded) "Expanded" else "Collapsed")
+        }
         enhancedImageView  = findViewById(R.id.enhancedImageView)
         originalImageView  = findViewById(R.id.originalImageView)
         qualityBadge       = findViewById(R.id.qualityBadge)
@@ -269,6 +444,17 @@ class MainActivity : AppCompatActivity() {
 
     @SuppressLint("ClickableViewAccessibility")
     private fun setupListeners() {
+        findViewById<View>(R.id.howToUseButton).setOnClickListener { showProductTour() }
+        findViewById<View>(R.id.textSizeButton).setOnClickListener {
+            MaterialAlertDialogBuilder(this, R.style.ThemeOverlay_CleaRx_Dialog)
+                .setTitle(R.string.text_size)
+                .setSingleChoiceItems(arrayOf("Standard", "Large", "Extra large"),
+                    usabilityPreferences.getInt("output_size", 0).coerceIn(0, 2)) { dialog, choice ->
+                    usabilityPreferences.edit().putInt("output_size", choice).apply()
+                    applyOutputTextSize()
+                    dialog.dismiss()
+                }.setNegativeButton("Close", null).show()
+        }
         flashlightButton.setOnClickListener {
             isFlashOn = !isFlashOn
             cameraControl?.enableTorch(isFlashOn)
@@ -289,7 +475,7 @@ class MainActivity : AppCompatActivity() {
         retakeButton.setOnClickListener { resetToCamera() }
 
         saveButton.setOnClickListener {
-            Toast.makeText(this, "Image saved!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Ready for the next prescription", Toast.LENGTH_SHORT).show()
             resetToCamera()
         }
 
@@ -315,22 +501,62 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkCameraPermission() {
+        if (!isLiveCameraPage() || permissionRequestInFlight) return
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
             == PackageManager.PERMISSION_GRANTED
         ) {
             startCamera()
         } else {
+            permissionRequestInFlight = true
             permissionLauncher.launch(Manifest.permission.CAMERA)
         }
     }
 
+    private fun hasCameraPermission(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
+            PackageManager.PERMISSION_GRANTED
+
+    private fun isLiveCameraPage(): Boolean =
+        !isFinishing && !isDestroyed && isActivityResumed && !cameraSuppressed && productTour == null &&
+            ::cameraContainer.isInitialized && cameraContainer.visibility == View.VISIBLE &&
+            ::resultScreen.isInitialized && resultScreen.visibility != View.VISIBLE && !isCapturing
+
+    private fun resumeLiveCameraIfNeeded() {
+        if (isLiveCameraPage()) checkCameraPermission()
+    }
+
+    private fun releaseCamera() {
+        validationJob?.cancel()
+        validationJob = null
+        focusRetryJob?.cancel()
+        focusRetryJob = null
+        stopGatekeeperAnalysis()
+        cameraControl?.enableTorch(false)
+        cameraProvider?.unbindAll()
+        cameraControl = null
+        imageCapture = null
+        imageAnalysis = null
+        cameraStartInProgress = false
+        if (::laserScanner.isInitialized) laserScanner.stopScanning()
+    }
+
     private fun startCamera() {
+        if (!isLiveCameraPage() || cameraStartInProgress) return
+        if (!hasCameraPermission()) {
+            showPermissionDeniedDialog()
+            return
+        }
+        cameraStartInProgress = true
         aeConverged = false
         afConverged = false
         gatekeeperResult = null
 
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
         cameraProviderFuture.addListener({
+            if (!isLiveCameraPage()) {
+                cameraStartInProgress = false
+                return@addListener
+            }
             val provider = cameraProviderFuture.get()
             cameraProvider = provider
 
@@ -344,6 +570,10 @@ class MainActivity : AppCompatActivity() {
                 ExtensionsManager.getInstanceAsync(this, provider)
 
             extensionsManagerFuture.addListener({
+                if (!isLiveCameraPage()) {
+                    cameraStartInProgress = false
+                    return@addListener
+                }
                 val extensionsManager = extensionsManagerFuture.get()
                 val baseCameraSelector  = CameraSelector.DEFAULT_BACK_CAMERA
 
@@ -424,8 +654,10 @@ class MainActivity : AppCompatActivity() {
             camera.cameraInfo.let { observeCameraState(it) }
             startValidationPolling()
             startFocusRetryLoop()
+            cameraStartInProgress = false
 
         } catch (e: Exception) {
+            cameraStartInProgress = false
             Log.e(TAG, "Camera bind failed", e)
             runOnUiThread { showGuidance(UIStrings.ERROR_CAMERA) }
         }
@@ -441,6 +673,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onGatekeeperResult(result: GatekeeperResult) {
+        if (!isLiveCameraPage() || !hasCameraPermission()) return
         gatekeeperResult = result
 
         if (isCapturing) return
@@ -466,9 +699,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun stopGatekeeperAnalysis() {
         imageAnalysis?.clearAnalyzer()
-        gatekeeper?.release()
+        val stoppedAnalyzer = gatekeeper
+        stoppedAnalyzer?.stop()
         gatekeeper = null
         imageAnalysis = null
+        if (stoppedAnalyzer != null && ::cameraExecutor.isInitialized) {
+            // Native Mats must not be freed on the UI thread while analysis uses them.
+            cameraExecutor.execute { stoppedAnalyzer.release() }
+        }
     }
 
     private fun triggerFocusAt(x: Float, y: Float) {
@@ -558,7 +796,7 @@ class MainActivity : AppCompatActivity() {
         consecutiveBadFrames = 0
 
         validationJob = lifecycleScope.launch(Dispatchers.IO) {
-            val api = RetrofitClient.getService(BASE_URL)
+            val api = RetrofitClient.getService(BuildConfig.BACKEND_BASE_URL)
             while (isActive && !isCapturing) {
                 if (aeConverged) runPreviewCheck(api)
                 delay(VALIDATION_INTERVAL_MS)
@@ -578,32 +816,45 @@ class MainActivity : AppCompatActivity() {
         val file     = File(cacheDir, "prev_${System.currentTimeMillis()}.jpg")
         val deferred = CompletableDeferred<Boolean>()
 
-        imageCapture?.takePicture(
-            ImageCapture.OutputFileOptions.Builder(file).build(),
-            cameraExecutor,
-            object : ImageCapture.OnImageSavedCallback {
-                override fun onImageSaved(output: ImageCapture.OutputFileResults) { deferred.complete(true)  }
-                override fun onError(exc: ImageCaptureException)                  { deferred.complete(false) }
-            }
-        ) ?: run { deferred.complete(false) }
-
-        if (!deferred.await() || !file.exists()) return
-
         try {
+            imageCapture?.takePicture(
+                ImageCapture.OutputFileOptions.Builder(file).build(),
+                cameraExecutor,
+                object : ImageCapture.OnImageSavedCallback {
+                    override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                        // A canceled polling job may receive a late camera callback.
+                        if (!deferred.complete(true)) file.delete()
+                    }
+                    override fun onError(exc: ImageCaptureException) { deferred.complete(false) }
+                },
+            ) ?: run { deferred.complete(false) }
+
+            if (!deferred.await() || !file.exists()) return
+            val jpeg = PreviewImageEncoder.encode(file)
             val part = MultipartBody.Part.createFormData(
-                "file", file.name,
-                file.asRequestBody("image/jpeg".toMediaTypeOrNull()),
+                "file", "preview.jpg",
+                jpeg.toRequestBody("image/jpeg".toMediaTypeOrNull()),
             )
             val resp = api.previewCheck(part)
             if (resp.isSuccessful) {
                 networkErrorCount = 0
                 resp.body()?.let { updatePreviewUI(it) }
+            } else if (resp.code() in listOf(400, 413, 415)) {
+                // Bad/oversized camera images do not mean the server is offline.
+                networkErrorCount = 0
+                Log.w(TAG, "Preview image rejected: HTTP ${resp.code()}, ${jpeg.size} bytes")
+                withContext(Dispatchers.Main) {
+                    showGuidance("Preview could not be checked. Hold steady or reopen the camera.")
+                }
             } else {
                 handleNetworkError("HTTP ${resp.code()}")
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             handleNetworkError(e.message ?: "unknown")
         } finally {
+            deferred.cancel()
             file.delete()
         }
     }
@@ -747,6 +998,116 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private fun handleSelectedFile(uri: Uri) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            var source: File? = null
+            try {
+                val type = contentResolver.getType(uri)?.lowercase()
+                require(type in setOf("image/jpeg", "image/png", "image/webp")) {
+                    "Choose a JPEG, PNG, or WebP image."
+                }
+                val selected = File.createTempFile("selected_", ".jpg", cacheDir)
+                source = selected
+                contentResolver.openInputStream(uri).use { input ->
+                    requireNotNull(input) { "Unable to open the selected image" }
+                    FileOutputStream(selected).use { output -> ImageInputPolicy.copyWithinLimit(input, output) }
+                }
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeFile(selected.absolutePath, bounds)
+                ImageInputPolicy.validateDimensions(bounds.outWidth, bounds.outHeight)
+                normalizeSelectedImage(selected)
+                require(selected.length() <= ImageInputPolicy.MAX_BYTES) { "The image must be 10 MB or smaller." }
+                withContext(Dispatchers.Main) { showCropDialog(selected) }
+                source = null // CropActivity now owns cleanup.
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (exception: Exception) {
+                Log.w(TAG, "Selected image preparation failed", exception)
+                withContext(Dispatchers.Main) {
+                    cameraSuppressed = false
+                    resumeLiveCameraIfNeeded()
+                    showFileError("We could not open that image. Choose a JPEG, PNG, or WebP image under 10 MB and 24 megapixels.")
+                }
+            } finally {
+                source?.delete()
+            }
+        }
+    }
+
+    private fun normalizeSelectedImage(file: File) {
+        val bitmaps = mutableSetOf<Bitmap>()
+        try {
+            val bitmap = checkNotNull(BitmapFactory.decodeFile(file.absolutePath)).also { bitmaps.add(it) }
+            val orientation = ExifInterface(file).getAttributeInt(
+                ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+            val matrix = Matrix().apply {
+                when (orientation) {
+                    ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> setScale(-1f, 1f)
+                    ExifInterface.ORIENTATION_ROTATE_180 -> setRotate(180f)
+                    ExifInterface.ORIENTATION_FLIP_VERTICAL -> setScale(1f, -1f)
+                    ExifInterface.ORIENTATION_TRANSPOSE -> { setRotate(90f); postScale(-1f, 1f) }
+                    ExifInterface.ORIENTATION_ROTATE_90 -> setRotate(90f)
+                    ExifInterface.ORIENTATION_TRANSVERSE -> { setRotate(270f); postScale(-1f, 1f) }
+                    ExifInterface.ORIENTATION_ROTATE_270 -> setRotate(270f)
+                }
+            }
+            val normalized = if (matrix.isIdentity) bitmap else Bitmap.createBitmap(
+                bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true).also { bitmaps.add(it) }
+            file.outputStream().use { check(normalized.compress(Bitmap.CompressFormat.JPEG, 95, it)) }
+        } finally {
+            bitmaps.forEach { it.recycle() }
+        }
+    }
+
+    private fun chooseImage() {
+        if (isCapturing) return
+        cameraSuppressed = true
+        releaseCamera()
+        filePickerLauncher.launch(arrayOf("image/jpeg", "image/png", "image/webp"))
+    }
+
+    private fun showCropDialog(sourceFile: File) {
+        cameraSuppressed = true
+        releaseCamera()
+        cropLauncher.launch(
+            android.content.Intent(this, CropActivity::class.java)
+                .putExtra(CropActivity.EXTRA_SOURCE, sourceFile.absolutePath)
+        )
+    }
+
+    private fun showProcessingPrivacy() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.processing_privacy_title)
+            .setMessage(R.string.processing_privacy_body)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
+    private fun startCroppedProcessing(croppedFile: File) {
+        if (!croppedFile.isFile) {
+            showFileError("The cropped image is no longer available.")
+            return
+        }
+        selectFileButton.setSelectedState(true)
+        isCapturing = true
+        findViewById<View>(R.id.modelPicker).isEnabled = false
+        validationJob?.cancel()
+        focusRetryJob?.cancel()
+        laserScanner.stopScanning()
+        cameraContainer.visibility = View.GONE
+        processingOverlay.visibility = View.VISIBLE
+        processingStatusText.text = UIStrings.ENHANCING
+        lifecycleScope.launch(Dispatchers.IO) {
+            sendToBackend(croppedFile, uploadedFile = true)
+        }
+    }
+
+    private fun showFileError(message: String) {
+        runOnUiThread {
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun captureAndProcess() {
         if (isCapturing) return
 
@@ -760,6 +1121,7 @@ class MainActivity : AppCompatActivity() {
         haptics.triggerHaptic(HapticFeedbackManager.HapticType.SUCCESS)
 
         isCapturing = true
+        findViewById<View>(R.id.modelPicker).isEnabled = false
         validationJob?.cancel()
         focusRetryJob?.cancel()
         captureButton.clearAnimation()
@@ -798,69 +1160,130 @@ class MainActivity : AppCompatActivity() {
         }, 250)
     }
 
-    private suspend fun sendToBackend(file: File) {
+    private suspend fun sendToBackend(file: File, uploadedFile: Boolean = false) {
+        val captureModel = withContext(Dispatchers.Main) { selectedRecognitionModel.apiId }
         withContext(Dispatchers.Main) {
             processingOverlay.visibility = View.GONE
             terminalController.showTerminal()
             terminalController.updateStatus(TrOCRStage.INIT)
         }
+        var processingFile: File? = null
         try {
             if (captureSessionId == null) {
                 captureSessionId = sessionCreationJob?.await()
             }
-            val croppedFile = cropToGuideFrame(file) ?: file
-
+            check(!captureSessionId.isNullOrBlank()) {
+                "Could not register capture session. Reopen the camera and check the server connection and user account."
+            }
+            val croppedFile = if (uploadedFile) {
+                file
+            } else {
+                cropToGuideFrame(file)
+                    ?: throw IllegalStateException("Unable to crop capture to the visible document border")
+            }
+            processingFile = croppedFile
             withContext(Dispatchers.Main) {
+                updateWorkflow(2, "Check the image")
                 terminalController.updateStatus(TrOCRStage.PREPROCESS)
             }
 
             val originalPart = MultipartBody.Part.createFormData(
-                "file", file.name,
-                file.asRequestBody("image/jpeg".toMediaTypeOrNull()),
-            )
-            val processingPart = MultipartBody.Part.createFormData(
                 "file", croppedFile.name,
-                croppedFile.asRequestBody("image/jpeg".toMediaTypeOrNull()),
+                croppedFile.asRequestBody(
+                    when (croppedFile.extension.lowercase()) {
+                        "png" -> "image/png"
+                        "webp" -> "image/webp"
+                        else -> "image/jpeg"
+                    }.toMediaTypeOrNull()
+                ),
             )
-
-            val processingService = RetrofitClient.getProcessingService(BASE_URL)
-            captureAttemptNumber++
+            val processingService = RetrofitClient.getProcessingService(BuildConfig.BACKEND_BASE_URL)
             val imageIdPart = captureSessionId?.let { sessionId ->
-                val imageResponse = processingService.captureImage(
-                    originalPart,
-                    MultipartBody.Part.createFormData("session_id", sessionId),
-                    MultipartBody.Part.createFormData(
-                        "capture_attempt_number", captureAttemptNumber.toString(),
-                    ),
-                )
-                val imageBody = imageResponse.body()
-                if (imageResponse.isSuccessful && imageBody?.status == "created" &&
-                    imageBody.image_id != null
-                ) {
-                    MultipartBody.Part.createFormData("image_id", imageBody.image_id)
-                } else null
+                val imageId = if (uploadedFile) {
+                    val response = processingService.uploadFile(
+                        originalPart,
+                        MultipartBody.Part.createFormData("session_id", sessionId),
+                    )
+                    if (response.code() == 422) {
+                        val detail = org.json.JSONObject(response.errorBody()?.string().orEmpty())
+                            .optJSONObject("detail")
+                        val guidance = detail?.optString("instruction")
+                            ?.takeIf { it.isNotBlank() }
+                            ?: "Image quality check failed. Please upload again with a clearer photo."
+                        withContext(Dispatchers.Main) {
+                            terminalController.forceHide()
+                            showError(guidance, uploadedFile = true)
+                        }
+                        return
+                    }
+                    check(response.isSuccessful) {
+                        "Image registration failed: HTTP ${response.code()} ${response.errorBody()?.string()}"
+                    }
+                    response.body()?.takeIf { it.status == "created" }?.image_id
+                } else {
+                    captureAttemptNumber++
+                    val response = processingService.captureImage(
+                        originalPart,
+                        MultipartBody.Part.createFormData("session_id", sessionId),
+                        MultipartBody.Part.createFormData(
+                            "capture_attempt_number", captureAttemptNumber.toString(),
+                        ),
+                    )
+                    check(response.isSuccessful) {
+                        "Image registration failed: HTTP ${response.code()} ${response.errorBody()?.string()}"
+                    }
+                    response.body()?.takeIf { it.status == "created" }?.image_id
+                }
+                imageId?.let { MultipartBody.Part.createFormData("image_id", it) }
             }
 
-            processingService.validateCapture(originalPart, imageIdPart)
+            checkNotNull(imageIdPart) { "Image registration returned no image ID. Please retry." }
+            // Uploads are validated by upload-file before it returns an image ID.
+            if (!uploadedFile) {
+                val validationResponse = processingService.validateCapture(originalPart, imageIdPart)
+                check(validationResponse.isSuccessful) {
+                    "Capture validation failed: HTTP ${validationResponse.code()} ${validationResponse.errorBody()?.string()}"
+                }
+                val validation = validationResponse.body()
+                if (validation?.is_usable != true) {
+                    withContext(Dispatchers.Main) {
+                        showError(validation?.instruction ?: "The photo could not pass quality checks.")
+                    }
+                    return
+                }
+            }
+
+            val processingPart = MultipartBody.Part.createFormData(
+                "file", croppedFile.name,
+                croppedFile.asRequestBody(
+                    when (croppedFile.extension.lowercase()) {
+                        "png" -> "image/png"
+                        "webp" -> "image/webp"
+                        else -> "image/jpeg"
+                    }.toMediaTypeOrNull()
+                ),
+            )
 
             withContext(Dispatchers.Main) {
+                updateWorkflow(3, "Read handwriting and look up names")
                 terminalController.updateStatus(TrOCRStage.FEATURE_EXTRACTION)
             }
 
-            val response = processingService.processImage(processingPart, imageIdPart)
+            val response = processingService.processImage(
+                processingPart, imageIdPart,
+                model = MultipartBody.Part.createFormData("model", captureModel),
+            )
 
-            file.delete()
-            if (croppedFile != file) croppedFile.delete()
+            if (response.isSuccessful) file.delete()
+            if (response.isSuccessful && croppedFile != file) croppedFile.delete()
 
             withContext(Dispatchers.Main) {
                 terminalController.updateStatus(TrOCRStage.DECODING)
             }
-            delay(1200)
 
             withContext(Dispatchers.Main) {
                 terminalController.updateStatus(TrOCRStage.POSTPROCESS)
             }
-            delay(1200)
 
             withContext(Dispatchers.Main) {
                 terminalController.onHidden = {
@@ -870,10 +1293,10 @@ class MainActivity : AppCompatActivity() {
                             "success"          -> showResult(body)
                             "rejected",
                             "no_text_detected" -> showRejectionResult(body)
-                            else               -> showError(UIStrings.ERROR_EMPTY)
+                            else               -> showError(UIStrings.ERROR_EMPTY, uploadedFile)
                         }
                     } else {
-                        showError("Server error ${response.code()} — check connection.")
+                        showError("We could not read this photo right now. Check your connection and try again.", uploadedFile)
                     }
                 }
                 terminalController.updateStatus(TrOCRStage.DONE)
@@ -884,8 +1307,11 @@ class MainActivity : AppCompatActivity() {
             Log.e(TAG, "Backend error", e)
             withContext(Dispatchers.Main) {
                 terminalController.forceHide()
-                showError("${UIStrings.ERROR_NETWORK} (${e.message})")
+                showError(UIStrings.ERROR_NETWORK, uploadedFile)
             }
+        } finally {
+            file.delete()
+            processingFile?.takeIf { it != file }?.delete()
         }
     }
 
@@ -938,18 +1364,27 @@ class MainActivity : AppCompatActivity() {
             val viewH = previewView.height.toFloat()
             if (viewW <= 0f || viewH <= 0f) return null
 
+            val frame = framingOverlay.getAbsoluteFrameRect()
+            if (frame.isEmpty || frame.left < 0f || frame.top < 0f ||
+                frame.right > viewW || frame.bottom > viewH
+            ) {
+                Log.w(TAG, "Visible frame is outside preview bounds: frame=$frame view=${viewW}x$viewH")
+                return null
+            }
+
             val scaleToFill = maxOf(viewW / jpegW, viewH / jpegH)
             val scaledJpegW = jpegW * scaleToFill
             val scaledJpegH = jpegH * scaleToFill
             val offsetX = (scaledJpegW - viewW) / 2f
             val offsetY = (scaledJpegH - viewH) / 2f
 
-            val normFrame: RectF = framingOverlay.getFrameRectNormalized()
-
-            val left   = ((normFrame.left   * viewW + offsetX) / scaleToFill).toInt()
-            val top    = ((normFrame.top    * viewH + offsetY) / scaleToFill).toInt()
-            val right  = ((normFrame.right  * viewW + offsetX) / scaleToFill).toInt()
-            val bottom = ((normFrame.bottom * viewH + offsetY) / scaleToFill).toInt()
+            // PreviewView.ScaleType.FILL_CENTER scales the oriented JPEG until it
+            // fills the view, then clips the centered excess. Reverse that exact
+            // transform to map the visible overlay border into JPEG coordinates.
+            val left = kotlin.math.floor((frame.left + offsetX) / scaleToFill).toInt()
+            val top = kotlin.math.floor((frame.top + offsetY) / scaleToFill).toInt()
+            val right = kotlin.math.ceil((frame.right + offsetX) / scaleToFill).toInt()
+            val bottom = kotlin.math.ceil((frame.bottom + offsetY) / scaleToFill).toInt()
 
             val cropRect = Rect(
                 left.coerceIn(0, jpegW),
@@ -958,7 +1393,9 @@ class MainActivity : AppCompatActivity() {
                 bottom.coerceIn(0, jpegH),
             )
 
-            if (cropRect.width() < 64 || cropRect.height() < 64) {
+            if (cropRect.width() < 64 || cropRect.height() < 64 ||
+                cropRect.left >= cropRect.right || cropRect.top >= cropRect.bottom
+            ) {
                 Log.w(TAG, "Crop rect too small: $cropRect — skipping crop")
                 return null
             }
@@ -993,6 +1430,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showResult(result: ProcessImageResponse) {
+        findViewById<View>(R.id.modelPicker).visibility = View.GONE
+        updateWorkflow(4, "Read and compare results")
+        findViewById<View>(R.id.detailsPanel).visibility = View.GONE
+        findViewById<TextView>(R.id.detailsToggle).setText(R.string.show_details)
+        ViewCompat.setStateDescription(findViewById(R.id.detailsToggle), "Collapsed")
+        findViewById<TextView>(R.id.resultMessage).text = if (result.medicines.isEmpty())
+            getString(R.string.no_medicine_cards)
+        else getString(R.string.review_guidance_compact)
+        saveButton.visibility = View.VISIBLE
+        enhancedImageView.setImageDrawable(null)
+        originalImageView.setImageDrawable(null)
         processingOverlay.visibility = View.GONE
         resultScreen.visibility      = View.VISIBLE
 
@@ -1006,67 +1454,67 @@ class MainActivity : AppCompatActivity() {
             originalImageView.setImageBitmap(BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
         }
 
-        val conf = if (result.trocr_confidence > 0) result.trocr_confidence
-        else result.quality_score
+        val conf = ConfidenceTier.readScore(result.ocr_confidence, result.trocr_confidence)
 
-        val isBestEffort = result.detection == "full_frame" ||
-                result.detection == "frame_region"
+        // Overall confidence: icon + action-oriented text, colour only reinforces it.
+        val baseTier = ConfidenceTier.overall(conf, result.medicines, result.drug_matched)
+        val tier = if (result.review_required)
+            ConfidenceTier.worst(baseTier, ConfidenceTier.MEDIUM) else baseTier
+        val tierLine = getString(tier.lineRes)
 
-        val badgeText = when {
-            isBestEffort         -> UIStrings.qualityBadge(conf)
-            conf >= 95           -> "✔ ${conf}% — TrOCR Ready"
-            conf >= 80           -> "⚠ ${conf}% — Usable"
-            conf >= 60           -> "⚠ ${conf}% — Poor"
-            else                 -> "✖ ${conf}% — Retake"
+        qualityBadge.text      = tierLine
+        qualityBadge.setTextColor(ContextCompat.getColor(this, tier.colorRes))
+        qualityBadge.contentDescription = getString(R.string.confidence_badge_description, tierLine)
+        qualityBadge.setOnClickListener {
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.confidence_explainer_title)
+                .setMessage(R.string.confidence_explainer_body)
+                .setPositiveButton(R.string.confidence_explainer_ok, null)
+                .show()
         }
-
-        val badgeColor = when {
-            conf >= 95 -> Color.parseColor("#4CAF50")
-            conf >= 80 -> Color.parseColor("#FFC107")
-            else       -> Color.parseColor("#F44336")
-        }
-
-        val passesUsed = result.passes_used.takeIf { it > 0 } ?: 1
-        val subLabel   = UIStrings.trocrSubLabel(conf, passesUsed, result.ocr_source)
-
-        qualityBadge.text      = badgeText
-        qualityBadge.setTextColor(badgeColor)
-        qualityScoreText.text  = subLabel
+        findViewById<View>(R.id.persistenceWarning).visibility =
+            if (result.persistence_status == "failed") View.VISIBLE else View.GONE
+        qualityScoreText.text = ""
+        qualityScoreText.visibility = View.GONE
 
         // Populate prescription section
-        val hasPrescriptionData = !result.extracted_text.isNullOrBlank()
+        val hasPrescriptionData = result.medicines.isNotEmpty() || !result.extracted_text.isNullOrBlank()
 
         if (hasPrescriptionData) {
             prescriptionCard.visibility = View.VISIBLE
             medicineAdapter.submitList(result.medicines)
             rawOcrSection.visibility = View.VISIBLE
-            rawOcrText.text = result.extracted_text
-            val confidencePct = (result.drug_confidence * 100).toInt()
+            rawOcrText.text = result.extracted_text?.let { withoutUncertaintyMarkers(it) }
+            val confidencePct = (result.name_similarity ?: (result.drug_confidence * 100)).toInt()
             val matchLabel    = if (result.drug_matched) "✔ Matched" else "✖ No match"
-            rxConfidenceBadge.text = "Drug match: $matchLabel ($confidencePct%)"
+            rxConfidenceBadge.text = "Name similarity: $confidencePct% - $matchLabel"
             rxConfidenceBadge.setTextColor(
-                if (result.drug_matched) Color.parseColor("#4CAF50")
-                else Color.parseColor("#F44336")
+                if (result.review_required) ContextCompat.getColor(this, R.color.status_warning)
+                else if (result.drug_matched) ContextCompat.getColor(this, R.color.status_success)
+                else ContextCompat.getColor(this, R.color.status_error)
             )
         } else {
             prescriptionCard.visibility = View.GONE
             rawOcrSection.visibility = View.GONE
         }
 
-        Log.i(TAG, "Result: trocr=$conf%, passes=$passesUsed, " +
-                "drug=${result.drug_name}, extracted=${result.extracted_text}, " +
-                "detection=${result.detection}, time=${result.processing_time_ms}ms")
-        if (BuildConfig.DEBUG) {
-            Log.d(TAG, "Parsed medicines[]: ${result.medicines}")
-        }
+        Log.i(TAG, "Result status=${result.status}, source=${result.ocr_source}, time=${result.processing_time_ms}ms")
     }
 
     private fun showRejectionResult(result: ProcessImageResponse) {
+        findViewById<View>(R.id.modelPicker).visibility = View.GONE
+        updateWorkflow(1, "Retake or choose an image")
+        findViewById<View>(R.id.detailsPanel).visibility = View.GONE
+        findViewById<TextView>(R.id.detailsToggle).setText(R.string.show_details)
+        ViewCompat.setStateDescription(findViewById(R.id.detailsToggle), "Collapsed")
+        findViewById<TextView>(R.id.resultMessage).text = result.message ?: "No readable prescription was found. Retake the photo or choose another image."
+        saveButton.visibility = View.GONE
+        findViewById<View>(R.id.persistenceWarning).visibility = View.GONE
         processingOverlay.visibility = View.GONE
         resultScreen.visibility      = View.VISIBLE
 
         enhancedImageView.setImageBitmap(null)
-        originalImageView.setImageBitmap(null)
+        originalImageView.setImageDrawable(null)
         prescriptionCard.visibility = View.GONE  // hide prescription card on rejection
         rawOcrSection.visibility = View.GONE
 
@@ -1080,18 +1528,40 @@ class MainActivity : AppCompatActivity() {
         }
 
         qualityBadge.text = reasonLabel
-        qualityBadge.setTextColor(Color.parseColor("#F44336"))
+        qualityBadge.setTextColor(ContextCompat.getColor(this, R.color.status_error))
+        // A rejection is not a confidence result, so the explainer tap is switched off here.
+        qualityBadge.isClickable = false
+        qualityBadge.contentDescription = null
         qualityScoreText.text = result.message ?: "Please retake the photo."
+        qualityScoreText.visibility = View.VISIBLE
 
         retakeButton.requestFocus()
     }
 
-    private fun showError(message: String) {
-        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-        resetToCamera()
+    private fun showError(message: String, uploadedFile: Boolean = false) {
+        updateWorkflow(1, "Try another image")
+        terminalController.forceHide()
+        processingOverlay.visibility = View.GONE
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Could not read the prescription")
+            .setMessage(message)
+            .setPositiveButton(if (uploadedFile) "Upload again" else "Retake") { _, _ ->
+                resetToCamera()
+                if (uploadedFile) chooseImage()
+            }
+
+            .setOnCancelListener { resetToCamera() }
+            .show()
     }
 
     private fun resetToCamera() {
+        updateWorkflow(1, "Capture or choose an image")
+        findViewById<View>(R.id.modelPicker).apply {
+            isEnabled = true
+            visibility = View.VISIBLE
+        }
+        cameraSuppressed = false
+        selectFileButton.setSelectedState(false)
         isCapturing          = false
         autoCaptureArmed     = false
         goodStateStartMs     = 0L
@@ -1125,7 +1595,7 @@ class MainActivity : AppCompatActivity() {
                     ).apply { data = Uri.parse("package:$packageName") }
                 )
             }
-            .setNegativeButton(UIStrings.CANCEL) { _, _ -> finish() }
+            .setNegativeButton(R.string.select_file) { _, _ -> chooseImage() }
             .show()
     }
 
