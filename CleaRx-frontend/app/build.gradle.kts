@@ -7,7 +7,7 @@ plugins {
 
 val releaseBackendUrl = "https://clearx-refactored.onrender.com/"
 val debugBackendUrl = providers.gradleProperty("clearx.debugBackendUrl")
-    .orElse("http://192.168.1.3:8000/").get().trim().let { if (it.endsWith("/")) it else "$it/" }
+    .orElse(releaseBackendUrl).get().trim().let { if (it.endsWith("/")) it else "$it/" }
 val debugBackendUri = URI(debugBackendUrl)
 require(debugBackendUri.scheme in setOf("http", "https") &&
     debugBackendUri.host?.matches(Regex("[A-Za-z0-9.-]+")) == true &&
